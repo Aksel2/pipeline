@@ -1,0 +1,55 @@
+{
+  "preprocess_config": {
+    "type": "log",
+    "pre_decision_activities": ["Assess loan risk"],
+    "post_decision_0_activities": ["Approve application"],
+    "post_decision_1_activities": ["Reject application"],
+    "column_names": {
+      "case_id": "case_id",
+      "activity": "activity",
+      "start_time": "start_time",
+      "end_time": "end_time"
+    },
+    "bpmn_model_path": "data/Loan_Application_Aksel.bpmn",
+    "target_gateway_id": "sid-79AFF435-717A-4C1E-87FA-D002372D2251",
+    "outcome_mapping": {
+      "Flow_1879scd": 0,
+      "sid-B04F2DE9-EE3E-4AC6-8470-B22F242E48AE": 1
+    }
+  },
+  "encoding_config": {
+    "case_attributes": ["Loan_type", "Client_type"],
+    "event_attributes_continuous": ["Loan_amount"],
+    "event_attributes_discrete": [],
+    "encoding_strategies": {
+      "one-hot": ["Client_type", "Loan_type"],
+      "target-based": [],
+      "aggregation": []
+    }
+  },
+  "models_config": {
+    "decision_tree_classifier": {
+      "enabled": true,
+      "max_depth": 10,
+      "criterion": "gini",
+      "class_weight": "balanced"
+    },
+"c45_tree_classifier": {
+      "enabled": true
+    },
+    "figs_classifier": {
+      "enabled": true,
+      "max_rules": 12
+    },
+    "ripper_classifier": {
+      "enabled": true
+    },
+    "explainable_boosting_classifier": {
+      "enabled": true
+    }
+  },
+  "evaluation_config": {
+    "metrics": ["accuracy", "precision", "auroc"],
+    "output_directory": "outputs"
+  }
+}
