@@ -43,6 +43,9 @@ def pipeline(
         df_train_filtered = collapse_observations(df_train, config)
         df_test_filtered = collapse_observations(df_test, config)
 
+        df_train_filtered['target'] = pd.to_numeric(df_train_filtered['target'])
+        df_test_filtered['target'] = pd.to_numeric(df_test_filtered['target'])
+
         encoder = DataFrameEncoder(config)
         df_train_final = encoder.fit_transform(df_train_filtered)
         df_test_final = encoder.transform(df_test_filtered)
@@ -79,8 +82,8 @@ def pipeline(
     print(f"Train target distribution:\n{df_train_final['target'].value_counts()}")
     print(f"Test target distribution:\n{df_test_final['target'].value_counts()}")
 
-    X_train, y_train = prepare_features_and_target(df_train_final)
-    X_test, y_test = prepare_features_and_target(df_test_final)
+    X_train, y_train = prepare_features_and_target(df_train_final, config)
+    X_test, y_test = prepare_features_and_target(df_test_final, config)
     y_train = y_train.astype(int)
     y_test = y_test.astype(int)
 

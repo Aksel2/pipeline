@@ -99,9 +99,20 @@ def preprocess_event_log(df: pd.DataFrame, config: dict) -> pd.DataFrame:
     start_time_col = column_mapping.get("start_time", "start_time")
     end_time_col = column_mapping.get("end_time", "end_time")
 
-    pre_decision_activity = preprocess_config.get("pre_decision_activities", [])[0]
-    post_decision_0_activity = preprocess_config.get("post_decision_0_activities", [])[0]
-    post_decision_1_activity = preprocess_config.get("post_decision_1_activities", [])[0]
+    pre_decision_list = preprocess_config.get("pre_decision_activities", [])
+    post_decision_0_list = preprocess_config.get("post_decision_0_activities", [])
+    post_decision_1_list = preprocess_config.get("post_decision_1_activities", [])
+
+    if not pre_decision_list:
+        raise ValueError("pre_decision_activities must contain at least one activity")
+    if not post_decision_0_list:
+        raise ValueError("post_decision_0_activities must contain at least one activity")
+    if not post_decision_1_list:
+        raise ValueError("post_decision_1_activities must contain at least one activity")
+
+    pre_decision_activity = pre_decision_list[0]
+    post_decision_0_activity = post_decision_0_list[0]
+    post_decision_1_activity = post_decision_1_list[0]
 
     encoding_config = config.get("encoding_config", {})
     case_attributes = encoding_config.get("case_attributes", [])

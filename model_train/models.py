@@ -5,15 +5,22 @@ import pandas as pd
 import wittgenstein as lw
 
 
-def prepare_features_and_target(df):
+def prepare_features_and_target(df, config=None):
     df_clean = df[df['target'].notna()].copy()
     df_clean['target'] = pd.to_numeric(df_clean['target'])
 
     columns_to_drop = ['target', 'observation']
 
-    for col in ['case_id', 'activity', 'start_time', 'end_time']:
-        if col in df_clean.columns:
-            columns_to_drop.append(col)
+    if config is not None:
+        column_names = config.get("preprocess_config", {}).get("column_names", {})
+        for col in column_names.values():
+            col_lower = col.lower()
+            if col_lower in df_clean.columns and col_lower not in columns_to_drop:
+                columns_to_drop.append(col_lower)
+    else:
+        for col in ['case_id', 'activity', 'start_time', 'end_time']:
+            if col in df_clean.columns:
+                columns_to_drop.append(col)
 
     X = df_clean.drop(columns=columns_to_drop, errors='ignore')
     y = df_clean['target']

@@ -229,12 +229,55 @@ def save_classification_reports(all_results, output_dir):
 
 
 def extract_ripper_rules(model, feature_names=None):
-    return str(model)
+    rules = ""
+    if hasattr(model, 'ruleset_') and model.ruleset_:
+        for i, rule in enumerate(model.ruleset_.rules, 1):
+            rules += f"Rule {i}: {rule}\n"
+    else:
+        rules += "No rules learned (all instances classified as default class).\n"
+
+    if hasattr(model, 'classes_'):
+        default_class = model.classes_[0] if hasattr(model, 'class_order_') else "unknown"
+        rules += f"\nDefault class: {default_class}"
+
+    return rules
+
+
+def _parse_c45_xml(xml_string):
+    from xml.etree import ElementTree
+    try:
+        root = ElementTree.fromstring(xml_string)
+    except ElementTree.ParseError:
+        return xml_string
+
+    lines = []
+
+    def walk(node, depth=0):
+        indent = "  " * depth
+        for child in node:
+            feature = child.tag
+            threshold = child.get("feature", "")
+            flag = child.get("flag", "")
+
+            if flag == "l":
+                op = "<="
+            else:
+                op = ">"
+
+            if child.text and child.text.strip() and len(child) == 0:
+                lines.append(f"{indent}IF {feature} {op} {threshold} THEN class = {child.text.strip()}")
+            else:
+                lines.append(f"{indent}IF {feature} {op} {threshold}:")
+                walk(child, depth + 1)
+
+    walk(root)
+    return "\n".join(lines) if lines else xml_string
 
 
 def extract_c45_rules(model, feature_names=None):
     try:
-        return str(model)
+        raw = str(model)
+        return _parse_c45_xml(raw)
     except:
         return "Unable to extract rules from C4.5 model"
 

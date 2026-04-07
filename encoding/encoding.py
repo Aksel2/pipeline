@@ -8,7 +8,10 @@ def collapse_observations(df, config):
     encoding_strategies = encoding_config.get("encoding_strategies", {})
     aggregation_columns = [col.lower() for col in encoding_strategies.get("aggregation", [])]
 
-    case_id_col = df.columns[df.columns.str.lower() == 'case_id'][0]
+    matching = df.columns[df.columns.str.lower() == 'case_id']
+    if len(matching) == 0:
+        raise ValueError("DataFrame must contain a 'case_id' column")
+    case_id_col = matching[0]
 
     if not aggregation_columns:
         return df.groupby(
