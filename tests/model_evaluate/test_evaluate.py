@@ -2,17 +2,14 @@ import pytest
 import os
 import numpy as np
 import pandas as pd
-from unittest.mock import MagicMock
 from sklearn.tree import DecisionTreeClassifier
 
 from model_evaluate.evaluate import (
     calculate_metrics,
-    evaluate_model,
-    evaluate_all_models,
-    save_results_to_csv,
-    extract_model_rules,
-    extract_decision_tree_rules,
     run_evaluation,
+    _extract_tree_metrics,
+    calculate_tree_understandability,
+    _extract_ruleset_metrics,
 )
 
 
@@ -58,130 +55,134 @@ class TestCalculateMetrics:
         assert "precision" not in result
 
 
-class TestEvaluateModel:
-    def setup_method(self):
-        np.random.seed(42)
-        self.X_train = pd.DataFrame({
-            'f1': np.random.rand(40),
-            'f2': np.random.rand(40)
+class TestExtractTreeMetrics:
+    def test_simple_tree(self):
+        """Build a small tree with known structure and verify N, D, DD, F."""
+        X = pd.DataFrame({
+            'f1': [0, 0, 1, 1, 0, 0, 1, 1],
+            'f2': [0, 1, 0, 1, 0, 1, 0, 1],
         })
-        self.y_train = pd.Series([0] * 20 + [1] * 20)
-        self.X_test = pd.DataFrame({
-            'f1': np.random.rand(10),
-            'f2': np.random.rand(10)
-        })
-        self.y_test = pd.Series([0] * 5 + [1] * 5)
-        self.model = DecisionTreeClassifier(random_state=42)
-        self.model.fit(self.X_train, self.y_train)
+        y = pd.Series([0, 0, 1, 1, 0, 0, 1, 1])
+        model = DecisionTreeClassifier(random_state=42)
+        model.fit(X, y)
 
-    def test_returns_expected_keys(self):
-        result = evaluate_model(
-            self.model, self.X_train, self.X_test,
-            self.y_train, self.y_test, "test_model"
-        )
+        metrics = _extract_tree_metrics(model.tree_)
 
-        expected_keys = [
-            'model_name', 'train_metrics', 'test_metrics',
-            'train_confusion_matrix', 'test_confusion_matrix',
-            'classification_report', 'y_test', 'y_test_pred', 'y_test_proba'
-        ]
-        for key in expected_keys:
-            assert key in result
+        assert metrics["N"] >= 1
+        assert metrics["D"] > 0
+        assert metrics["F"] >= 1
+        assert isinstance(metrics["DD"], (int, float))
 
-    def test_model_name_preserved(self):
-        result = evaluate_model(
-            self.model, self.X_train, self.X_test,
-            self.y_train, self.y_test, "my_model"
-        )
-        assert result['model_name'] == "my_model"
-
-    def test_handles_model_without_predict_proba(self):
-        model = MagicMock()
-        model.predict.return_value = np.array([0] * 5 + [1] * 5)
-        del model.predict_proba
-
-        result = evaluate_model(
-            model, self.X_train, self.X_test,
-            self.y_train, self.y_test, "no_proba_model"
-        )
-
-        assert result['y_test_proba'] is None
-
-
-class TestEvaluateAllModels:
-    def test_evaluates_multiple(self):
+    def test_deeper_tree(self):
+        """A deeper tree should have more nodes and higher D."""
         np.random.seed(42)
-        X_train = pd.DataFrame({'f1': np.random.rand(40)})
-        y_train = pd.Series([0] * 20 + [1] * 20)
-        X_test = pd.DataFrame({'f1': np.random.rand(10)})
-        y_test = pd.Series([0] * 5 + [1] * 5)
+        X = pd.DataFrame({
+            'f1': np.random.rand(100),
+            'f2': np.random.rand(100),
+            'f3': np.random.rand(100),
+        })
+        y = pd.Series((X['f1'] > 0.5).astype(int) ^ (X['f2'] > 0.3).astype(int))
+        model = DecisionTreeClassifier(random_state=42, max_depth=4)
+        model.fit(X, y)
 
-        model1 = DecisionTreeClassifier(random_state=42)
-        model1.fit(X_train, y_train)
-        model2 = DecisionTreeClassifier(random_state=0, max_depth=1)
-        model2.fit(X_train, y_train)
+        metrics = _extract_tree_metrics(model.tree_)
 
-        trained_models = {
-            'model_a': {'model': model1, 'X_train': X_train, 'X_test': X_test, 'y_train': y_train, 'y_test': y_test},
-            'model_b': {'model': model2, 'X_train': X_train, 'X_test': X_test, 'y_train': y_train, 'y_test': y_test},
-        }
+        assert metrics["N"] > 1
+        assert metrics["D"] > 1
+        assert metrics["F"] >= 2
 
-        results = evaluate_all_models(trained_models)
+    def test_single_node_tree(self):
+        """A tree with only a root (pure data) should have N=0, D=0."""
+        X = pd.DataFrame({'f1': [1, 2, 3, 4]})
+        y = pd.Series([0, 0, 0, 0])
+        model = DecisionTreeClassifier(random_state=42)
+        model.fit(X, y)
 
-        assert 'model_a' in results
-        assert 'model_b' in results
+        metrics = _extract_tree_metrics(model.tree_)
 
-
-class TestSaveResultsToCsv:
-    def test_creates_file(self, tmp_path):
-        all_results = {
-            'model_a': {
-                'train_metrics': {'accuracy': 0.9},
-                'test_metrics': {'accuracy': 0.8},
-            }
-        }
-
-        df = save_results_to_csv(all_results, str(tmp_path))
-
-        assert os.path.exists(os.path.join(str(tmp_path), 'model_comparison.csv'))
-        assert 'model' in df.columns
-        assert 'train_accuracy' in df.columns
-        assert 'test_accuracy' in df.columns
+        assert metrics["N"] == 0
+        assert metrics["D"] == 0
+        assert metrics["F"] == 0
+        assert metrics["DD"] == 0
 
 
-class TestExtractModelRules:
-    def test_decision_tree_dispatch(self):
+class TestCalculateTreeUnderstandability:
+    def test_returns_dict_for_tree(self):
         np.random.seed(42)
         X = pd.DataFrame({'f1': np.random.rand(20), 'f2': np.random.rand(20)})
         y = pd.Series([0] * 10 + [1] * 10)
         model = DecisionTreeClassifier(max_depth=2, random_state=42)
         model.fit(X, y)
 
-        rules = extract_model_rules(model, 'decision_tree', ['f1', 'f2'])
-        assert 'f1' in rules or 'f2' in rules
+        result = calculate_tree_understandability(model, 'decision_tree')
 
-    def test_unknown_model_type(self):
-        model = MagicMock()
-        rules = extract_model_rules(model, 'unknown_model')
-        assert "not implemented" in rules
+        assert result is not None
+        assert 'understandability' in result
+        assert 0 <= result['understandability'] <= 1
+        assert result['N'] >= 1
+        assert result['F'] >= 1
 
-    def test_ripper_dispatch(self):
-        model = MagicMock()
-        model.__str__ = lambda self: "rule1 ^ rule2"
-        rules = extract_model_rules(model, 'ripper')
-        assert "rule1" in rules
+    def test_score_decreases_with_complexity(self):
+        """A deeper/more complex tree should have lower understandability."""
+        np.random.seed(42)
+        X = pd.DataFrame({'f1': np.random.rand(100), 'f2': np.random.rand(100)})
+        y = pd.Series([0] * 50 + [1] * 50)
 
-    def test_figs_dispatch(self):
-        model = MagicMock()
-        model.__str__ = lambda self: "figs_rule"
-        rules = extract_model_rules(model, 'figs')
-        assert "figs_rule" in rules
+        simple = DecisionTreeClassifier(max_depth=1, random_state=42)
+        simple.fit(X, y)
+        complex_model = DecisionTreeClassifier(max_depth=10, random_state=42)
+        complex_model.fit(X, y)
 
-    def test_c45_dispatch(self):
-        model = MagicMock()
-        model.__str__ = lambda self: "c45_tree"
-        rules = extract_model_rules(model, 'c45')
-        assert "c45_tree" in rules
+        simple_score = calculate_tree_understandability(simple, 'decision_tree')
+        complex_score = calculate_tree_understandability(complex_model, 'decision_tree')
+
+        assert simple_score['understandability'] >= complex_score['understandability']
+
+    def test_s_parameter_affects_score(self):
+        np.random.seed(42)
+        X = pd.DataFrame({'f1': np.random.rand(20), 'f2': np.random.rand(20)})
+        y = pd.Series([0] * 10 + [1] * 10)
+        model = DecisionTreeClassifier(max_depth=3, random_state=42)
+        model.fit(X, y)
+
+        small_s = calculate_tree_understandability(model, 'decision_tree', s=1)
+        large_s = calculate_tree_understandability(model, 'decision_tree', s=100)
+
+        assert large_s['understandability'] >= small_s['understandability']
+
+
+class TestExtractRulesetMetrics:
+    def test_example_from_spec(self):
+        """A & B -> 0, C & A -> 1, D -> 0. Flattened: [A, B, C, A, D]."""
+        rules = [["A", "B"], ["C", "A"], ["D"]]
+        metrics = _extract_ruleset_metrics(rules)
+
+        assert metrics["N"] == 5
+        assert metrics["D"] == pytest.approx(5 / 3)
+        assert metrics["F"] == 4
+        assert metrics["DD"] == 3
+
+    def test_single_rule(self):
+        rules = [["X", "Y", "Z"]]
+        metrics = _extract_ruleset_metrics(rules)
+
+        assert metrics["N"] == 3
+        assert metrics["D"] == 3.0
+        assert metrics["F"] == 3
+        assert metrics["DD"] == 0
+
+    def test_repeated_feature_three_times(self):
+        """A appears at positions 0, 2, 4. DD(A) = (2-0) + (4-2) = 4."""
+        rules = [["A", "B"], ["A", "C"], ["A"]]
+        metrics = _extract_ruleset_metrics(rules)
+
+        assert metrics["N"] == 5
+        assert metrics["DD"] == 4
+        assert metrics["F"] == 3
+
+    def test_empty_returns_none(self):
+        assert _extract_ruleset_metrics([]) is None
+        assert _extract_ruleset_metrics(None) is None
 
 
 class TestRunEvaluation:

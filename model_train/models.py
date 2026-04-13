@@ -1,4 +1,4 @@
-from imodels import FIGSClassifier, C45TreeClassifier
+from imodels import FIGSClassifier, BoostedRulesClassifier, RuleFitClassifier
 from interpret.glassbox import ExplainableBoostingClassifier
 from sklearn.tree import DecisionTreeClassifier
 import pandas as pd
@@ -25,19 +25,33 @@ def prepare_features_and_target(df, config=None):
     X = df_clean.drop(columns=columns_to_drop, errors='ignore')
     y = df_clean['target']
 
+    for col in X.columns:
+        if X[col].isna().any():
+            if X[col].dropna().isin([0, 1, True, False, 'True', 'False']).all():
+                X[col] = X[col].fillna(0)
+            else:
+                X[col] = X[col].fillna(X[col].median())
+
     return X, y
+
+
+def _train_and_score(model, X_train, X_test, y_train, y_test, header, hyperparams_str=None):
+    model.fit(X_train, y_train)
+
+    train_score = model.score(X_train, y_train)
+    test_score = model.score(X_test, y_test)
+
+    print(f"Training accuracy: {train_score:.4f}")
+    print(f"Test accuracy: {test_score:.4f}")
+    if hyperparams_str:
+        print(f"Hyperparameters: {hyperparams_str}")
+
+    return model
 
 
 def train_dtc(X_train, X_test, y_train, y_test, model_params=None):
     if model_params is None:
         model_params = {}
-
-    print("\n--- Target Distribution ---")
-    print(f"Training set size: {len(X_train)}")
-    print(f"Test set size: {len(X_test)}")
-    print(f"\nTraining set class distribution:\n{y_train.value_counts()}")
-    print(f"Class proportions:\n{y_train.value_counts(normalize=True)}")
-    print(f"\nTest set class distribution:\n{y_test.value_counts()}")
 
     max_depth = model_params.get('max_depth', None)
     criterion = model_params.get('criterion', 'gini')
@@ -49,89 +63,66 @@ def train_dtc(X_train, X_test, y_train, y_test, model_params=None):
         class_weight=class_weight,
         random_state=42
     )
-    dtc.fit(X_train, y_train)
+    return _train_and_score(
+        dtc, X_train, X_test, y_train, y_test,
+        "Decision Tree Classifier",
+        f"max_depth={max_depth}, criterion={criterion}, class_weight={class_weight}"
+    )
 
-    train_score = dtc.score(X_train, y_train)
-    test_score = dtc.score(X_test, y_test)
-
-    print(f"\nTraining accuracy: {train_score:.4f}")
-    print(f"Test accuracy: {test_score:.4f}")
-    print(f"Hyperparameters: max_depth={max_depth}, criterion={criterion}, class_weight={class_weight}")
-
-    return dtc
-
-
-def train_c45(X_train, X_test, y_train, y_test, model_params=None):
-    if model_params is None:
-        model_params = {}
-
-    print("\n--- C4.5 Tree Classifier ---")
-
-    c45 = C45TreeClassifier()
-    c45.fit(X_train, y_train)
-
-    train_score = c45.score(X_train, y_train)
-    test_score = c45.score(X_test, y_test)
-
-    print(f"Training accuracy: {train_score:.4f}")
-    print(f"Test accuracy: {test_score:.4f}")
-
-    return c45
 
 
 def train_figs(X_train, X_test, y_train, y_test, model_params=None):
     if model_params is None:
         model_params = {}
 
-    print("\n--- FIGS Classifier ---")
-
     max_rules = model_params.get('max_rules', 12)
-
     figs = FIGSClassifier(max_rules=max_rules, random_state=42)
-    figs.fit(X_train, y_train)
-
-    train_score = figs.score(X_train, y_train)
-    test_score = figs.score(X_test, y_test)
-
-    print(f"Training accuracy: {train_score:.4f}")
-    print(f"Test accuracy: {test_score:.4f}")
-    print(f"Hyperparameters: max_rules={max_rules}")
-
-    return figs
+    return _train_and_score(
+        figs, X_train, X_test, y_train, y_test,
+        "FIGS Classifier",
+        f"max_rules={max_rules}"
+    )
 
 
 def train_ebc(X_train, X_test, y_train, y_test, model_params=None):
     if model_params is None:
         model_params = {}
 
-    print("\n--- Explainable Boosting Classifier ---")
-
     ebc = ExplainableBoostingClassifier(random_state=42)
-    ebc.fit(X_train, y_train)
+    return _train_and_score(ebc, X_train, X_test, y_train, y_test, "Explainable Boosting Classifier")
 
-    train_score = ebc.score(X_train, y_train)
-    test_score = ebc.score(X_test, y_test)
 
-    print(f"Training accuracy: {train_score:.4f}")
-    print(f"Test accuracy: {test_score:.4f}")
+def train_boosted_rules(X_train, X_test, y_train, y_test, model_params=None):
+    if model_params is None:
+        model_params = {}
 
-    return ebc
+    n_estimators = model_params.get('n_estimators', 10)
+    brc = BoostedRulesClassifier(n_estimators=n_estimators)
+    return _train_and_score(
+        brc, X_train, X_test, y_train, y_test,
+        "Boosted Rules Classifier",
+        f"n_estimators={n_estimators}"
+    )
+
+
+def train_rulefit(X_train, X_test, y_train, y_test, model_params=None):
+    if model_params is None:
+        model_params = {}
+
+    max_rules = model_params.get('max_rules', 30)
+    rfc = RuleFitClassifier(max_rules=max_rules, random_state=42)
+    return _train_and_score(
+        rfc, X_train, X_test, y_train, y_test,
+        "RuleFit Classifier",
+        f"max_rules={max_rules}"
+    )
 
 
 def train_ripper(X_train, X_test, y_train, y_test, model_params=None):
     if model_params is None:
         model_params = {}
 
-    print("\n--- RIPPER Classifier ---")
-
     ripper = lw.RIPPER()
-    ripper.fit(X_train, y_train)
-
-    train_score = ripper.score(X_train, y_train)
-    test_score = ripper.score(X_test, y_test)
-
-    print(f"Training accuracy: {train_score:.4f}")
-    print(f"Test accuracy: {test_score:.4f}")
+    model = _train_and_score(ripper, X_train, X_test, y_train, y_test, "RIPPER Classifier")
     print(f"\nRules:\n{ripper}")
-
-    return ripper
+    return model

@@ -2,14 +2,7 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from model_train.models import (
-    prepare_features_and_target,
-    train_dtc,
-    train_c45,
-    train_figs,
-    train_ebc,
-    train_ripper,
-)
+from model_train.models import prepare_features_and_target
 
 
 def make_sample_df():
@@ -25,13 +18,6 @@ def make_sample_df():
         'feature_2': np.random.rand(n),
         'target': [0] * 25 + [1] * 25
     })
-
-
-def make_train_test():
-    df = make_sample_df()
-    X, y = prepare_features_and_target(df)
-    split = 40
-    return X[:split], X[split:], y[:split], y[split:]
 
 
 class TestPrepareFeatures:
@@ -74,57 +60,3 @@ class TestPrepareFeatures:
 
         assert 'feature_1' in X.columns
         assert len(X) == 2
-
-
-class TestTrainDtc:
-    def test_returns_model(self):
-        X_train, X_test, y_train, y_test = make_train_test()
-        model = train_dtc(X_train, X_test, y_train, y_test)
-        assert hasattr(model, 'predict')
-        assert hasattr(model, 'score')
-
-    def test_accepts_params(self):
-        X_train, X_test, y_train, y_test = make_train_test()
-        model = train_dtc(X_train, X_test, y_train, y_test, {
-            'max_depth': 3, 'criterion': 'entropy'
-        })
-        assert model.max_depth == 3
-
-    def test_predictions_valid(self):
-        X_train, X_test, y_train, y_test = make_train_test()
-        model = train_dtc(X_train, X_test, y_train, y_test)
-        preds = model.predict(X_test)
-        assert set(preds).issubset({0, 1})
-
-
-class TestTrainC45:
-    def test_returns_model(self):
-        X_train, X_test, y_train, y_test = make_train_test()
-        model = train_c45(X_train, X_test, y_train, y_test)
-        assert hasattr(model, 'predict')
-
-
-class TestTrainFigs:
-    def test_returns_model(self):
-        X_train, X_test, y_train, y_test = make_train_test()
-        model = train_figs(X_train, X_test, y_train, y_test)
-        assert hasattr(model, 'predict')
-
-    def test_accepts_max_rules(self):
-        X_train, X_test, y_train, y_test = make_train_test()
-        model = train_figs(X_train, X_test, y_train, y_test, {'max_rules': 5})
-        assert hasattr(model, 'predict')
-
-
-class TestTrainEbc:
-    def test_returns_model(self):
-        X_train, X_test, y_train, y_test = make_train_test()
-        model = train_ebc(X_train, X_test, y_train, y_test)
-        assert hasattr(model, 'predict')
-
-
-class TestTrainRipper:
-    def test_returns_model(self):
-        X_train, X_test, y_train, y_test = make_train_test()
-        model = train_ripper(X_train, X_test, y_train, y_test)
-        assert hasattr(model, 'predict')

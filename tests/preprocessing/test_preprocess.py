@@ -39,38 +39,37 @@ def make_df(case_id, activities):
 
 class TestPreprocessEventLog:
 
-    def test_azzc_scan_forward_finds_c(self):
-        """AZZC: A is decision point, scan past Z's, find C → observation includes A, target=1."""
+    def test_azzc(self):
+        """AZZC: A sets pending, C is outcome → observation is A,Z,Z (everything before C)."""
         df = make_df("case1", ["A", "Z", "Z", "C"])
         result = preprocess_event_log(df, make_config())
 
-        assert len(result) == 1
-        assert result.iloc[0]["activity"] == "A"
-        assert result.iloc[0]["target"] == 1
-        assert result.iloc[0]["observation"] == 1
+        assert len(result) == 3
+        assert result["activity"].tolist() == ["A", "Z", "Z"]
+        assert all(result["target"] == 1)
+        assert all(result["observation"] == 1)
 
-    def test_azzab_overwrite(self):
-        """AZZAB: Two A's. First A→B creates obs, second A→B overwrites.
-        Previous observation is discarded. New observation starts after the previous decision point."""
+    def test_azzab(self):
+        """AZZAB: Two A's, second replaces first. B is outcome.
+        Observation is everything before B: A,Z,Z,A."""
         df = make_df("case1", ["A", "Z", "Z", "A", "B"])
         result = preprocess_event_log(df, make_config())
 
-        assert len(result) == 3
-        activities = result["activity"].tolist()
-        assert activities == ["Z", "Z", "A"]
+        assert len(result) == 4
+        assert result["activity"].tolist() == ["A", "Z", "Z", "A"]
         assert all(result["target"] == 0)
-        assert all(result["observation"] == 2)
+        assert all(result["observation"] == 1)
 
     def test_azzz_no_outcome(self):
-        """AZZZ: A is found but no B or C follows → not added."""
+        """AZZZ: A is found but no B or C follows → no observation."""
         df = make_df("case1", ["A", "Z", "Z", "Z"])
         result = preprocess_event_log(df, make_config())
 
         assert len(result) == 0
 
-    def test_abcde_immediate_outcome(self):
-        """ABCDE: A followed immediately by B → observation is A, target=0."""
-        df = make_df("case1", ["A", "B", "C", "D", "E"])
+    def test_ab_immediate_outcome(self):
+        """AB: A sets pending, B is immediate outcome → observation is just A."""
+        df = make_df("case1", ["A", "B"])
         result = preprocess_event_log(df, make_config())
 
         assert len(result) == 1
@@ -78,7 +77,7 @@ class TestPreprocessEventLog:
         assert result.iloc[0]["target"] == 0
 
     def test_abghz(self):
-        """ABGHZ: A followed by B → observation is A, target=0."""
+        """ABGHZ: A then B → observation is A, target=0. Events after B ignored."""
         df = make_df("case1", ["A", "B", "G", "H", "Z"])
         result = preprocess_event_log(df, make_config())
 
@@ -86,40 +85,15 @@ class TestPreprocessEventLog:
         assert result.iloc[0]["activity"] == "A"
         assert result.iloc[0]["target"] == 0
 
-    def test_abcbfb(self):
-        """ABCBFB: A followed by B → observation is A, target=0."""
-        df = make_df("case1", ["A", "B", "C", "B", "F", "B"])
-        result = preprocess_event_log(df, make_config())
-
-        assert len(result) == 1
-        assert result.iloc[0]["activity"] == "A"
-        assert result.iloc[0]["target"] == 0
-
-    def test_abghc_takes_first_outcome(self):
-        """ABGHC: A followed by B (first outcome found) → target=0, not C."""
-        df = make_df("case1", ["A", "B", "G", "H", "C"])
-        result = preprocess_event_log(df, make_config())
-
-        assert len(result) == 1
-        assert result.iloc[0]["target"] == 0
-
-    def test_abcf_takes_b(self):
-        """ABCF: A followed by B → target=0 (we take B)."""
-        df = make_df("case1", ["A", "B", "C", "F"])
-        result = preprocess_event_log(df, make_config())
-
-        assert len(result) == 1
-        assert result.iloc[0]["target"] == 0
-
     def test_no_decision_point(self):
-        """ZZZZZ: No A at all → nothing added."""
+        """ZZZZZ: No A at all → no observation."""
         df = make_df("case1", ["Z", "Z", "Z", "Z", "Z"])
         result = preprocess_event_log(df, make_config())
 
         assert len(result) == 0
 
     def test_multiple_cases(self):
-        """Two cases: one valid, one not."""
+        """Two cases: one with decision point, one without."""
         df1 = make_df("case1", ["A", "B"])
         df2 = make_df("case2", ["Z", "Z"])
         df = pd.concat([df1, df2], ignore_index=True)
@@ -129,12 +103,44 @@ class TestPreprocessEventLog:
         assert result.iloc[0]["case_id"] == "case1"
 
     def test_observation_includes_all_prior_rows(self):
-        """XYZAC: Activities before A are included in the observation."""
+        """XYZAC: Events before A are included. Observation = X,Y,Z,A (everything before C)."""
         df = make_df("case1", ["X", "Y", "Z", "A", "C"])
         result = preprocess_event_log(df, make_config())
 
         assert len(result) == 4
-        activities = result["activity"].tolist()
-        assert activities == ["X", "Y", "Z", "A"]
+        assert result["activity"].tolist() == ["X", "Y", "Z", "A"]
         assert all(result["target"] == 1)
         assert all(result["observation"] == 1)
+
+    def test_two_observations(self):
+        """AZZBAZZB: Two complete decision cycles.
+        Obs 1: A,Z,Z (before first B). Obs 2: A,Z,Z,B,A,Z,Z (before second B)."""
+        df = make_df("case1", ["A", "Z", "Z", "B", "A", "Z", "Z", "B"])
+        result = preprocess_event_log(df, make_config())
+
+        obs1 = result[result["observation"] == 1]
+        obs2 = result[result["observation"] == 2]
+
+        assert len(obs1) == 3
+        assert obs1["activity"].tolist() == ["A", "Z", "Z"]
+        assert all(obs1["target"] == 0)
+
+        assert len(obs2) == 7
+        assert obs2["activity"].tolist() == ["A", "Z", "Z", "B", "A", "Z", "Z"]
+        assert all(obs2["target"] == 0)
+
+    def test_outcome_without_decision_ignored(self):
+        """BZZ: Outcome B appears but no prior A → no observation."""
+        df = make_df("case1", ["B", "Z", "Z"])
+        result = preprocess_event_log(df, make_config())
+
+        assert len(result) == 0
+
+    def test_pending_reset_after_outcome(self):
+        """ABZC: A→B commits obs 1. Z,C has no pending A → no second observation."""
+        df = make_df("case1", ["A", "B", "Z", "C"])
+        result = preprocess_event_log(df, make_config())
+
+        assert len(result) == 1
+        assert result.iloc[0]["activity"] == "A"
+        assert result.iloc[0]["target"] == 0

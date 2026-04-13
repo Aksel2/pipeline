@@ -1,28 +1,31 @@
 {
   "preprocess_config": {
     "type": "log",
-    "pre_decision_activities": ["Assess loan risk"],
-    "post_decision_0_activities": ["Approve application"],
-    "post_decision_1_activities": ["Reject application"],
+    "pre_decision_activities": ["Check loan type"],
+    "post_decision_0_activities": ["Approve loan"],
+    "post_decision_1_activities": ["Reject loan"],
     "column_names": {
       "case_id": "case_id",
       "activity": "activity",
       "start_time": "start_time",
       "end_time": "end_time"
     },
-    "bpmn_model_path": "data/Loan_Application_Aksel.bpmn",
+    "bpmn_model_path": "",
     "target_gateway_id": "sid-79AFF435-717A-4C1E-87FA-D002372D2251",
     "outcome_mapping": {
       "Flow_1879scd": 0,
       "sid-B04F2DE9-EE3E-4AC6-8470-B22F242E48AE": 1
     }
   },
+  "balancing_config": {
+    "strategy": "oversample"
+  },
   "encoding_config": {
-    "case_attributes": ["Loan_type", "Client_type"],
-    "event_attributes_continuous": ["Loan_amount"],
+    "case_attributes": ["loan_type", "client_type"],
+    "event_attributes_continuous": ["loan_amount", "credit_score", "dti", "employment"],
     "event_attributes_discrete": [],
     "encoding_strategies": {
-      "one-hot": ["Client_type", "Loan_type"],
+      "one-hot": ["loan_type", "client_type"],
       "target-based": [],
       "aggregation": []
     }
@@ -35,7 +38,8 @@
       "class_weight": "balanced"
     },
 "c45_tree_classifier": {
-      "enabled": true
+      "enabled": false,
+      "max_rules": 10
     },
     "figs_classifier": {
       "enabled": true,
@@ -43,6 +47,14 @@
     },
     "ripper_classifier": {
       "enabled": true
+    },
+    "boosted_rules_classifier": {
+      "enabled": true,
+      "n_estimators": 10
+    },
+    "rulefit_classifier": {
+      "enabled": true,
+      "max_rules": 30
     },
     "explainable_boosting_classifier": {
       "enabled": true
