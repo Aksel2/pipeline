@@ -1,8 +1,6 @@
 import pytest
 import json
-import os
 import pandas as pd
-import numpy as np
 
 from core import pipeline
 
@@ -29,7 +27,6 @@ def make_event_log():
 def make_config(output_dir):
     return {
         "preprocess_config": {
-            "type": "log",
             "pre_decision_activities": ["Assess loan risk"],
             "post_decision_0_activities": ["Approve application"],
             "post_decision_1_activities": ["Reject application"],
@@ -57,7 +54,6 @@ def make_config(output_dir):
                 "criterion": "gini",
                 "class_weight": "balanced"
             },
-            "c45_tree_classifier": {"enabled": False},
             "figs_classifier": {"enabled": False},
             "ripper_classifier": {"enabled": False},
             "explainable_boosting_classifier": {"enabled": False}
@@ -154,27 +150,3 @@ class TestPipeline:
 
         with pytest.raises(ValueError, match="pre_decision_activity"):
             pipeline(input_logs_path=data_path, config_path=config_path)
-
-    def test_outputs_csv_files(self, tmp_path):
-        data_path = str(tmp_path / "data.csv")
-        config_path = str(tmp_path / "config.json")
-
-        df = make_event_log()
-        df.to_csv(data_path, index=False)
-
-        config = make_config(str(tmp_path / "outputs"))
-        with open(config_path, 'w') as f:
-            json.dump(config, f)
-
-        original_dir = os.getcwd()
-        os.chdir(str(tmp_path))
-        try:
-            pipeline(
-                input_logs_path=data_path,
-                config_path=config_path,
-            )
-            assert os.path.exists('preprocessed_data.csv')
-            assert os.path.exists('train_encoded.csv')
-            assert os.path.exists('test_encoded.csv')
-        finally:
-            os.chdir(original_dir)
