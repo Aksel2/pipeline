@@ -1,8 +1,8 @@
-from imodels import FIGSClassifier, BoostedRulesClassifier, RuleFitClassifier
-from interpret.glassbox import ExplainableBoostingClassifier
-from sklearn.tree import DecisionTreeClassifier
 import pandas as pd
 import wittgenstein as lw
+from imodels import FIGSClassifier, RuleFitClassifier
+from interpret.glassbox import ExplainableBoostingClassifier
+from sklearn.tree import DecisionTreeClassifier
 
 
 def prepare_features_and_target(df, config=None):
@@ -35,17 +35,8 @@ def prepare_features_and_target(df, config=None):
     return X, y
 
 
-def _train_and_score(model, X_train, X_test, y_train, y_test, header, hyperparams_str=None):
+def train_and_score(model, X_train, X_test, y_train, y_test):
     model.fit(X_train, y_train)
-
-    train_score = model.score(X_train, y_train)
-    test_score = model.score(X_test, y_test)
-
-    print(f"Training accuracy: {train_score:.4f}")
-    print(f"Test accuracy: {test_score:.4f}")
-    if hyperparams_str:
-        print(f"Hyperparameters: {hyperparams_str}")
-
     return model
 
 
@@ -63,12 +54,7 @@ def train_dtc(X_train, X_test, y_train, y_test, model_params=None):
         class_weight=class_weight,
         random_state=42
     )
-    return _train_and_score(
-        dtc, X_train, X_test, y_train, y_test,
-        "Decision Tree Classifier",
-        f"max_depth={max_depth}, criterion={criterion}, class_weight={class_weight}"
-    )
-
+    return train_and_score(dtc, X_train, X_test, y_train, y_test)
 
 
 def train_figs(X_train, X_test, y_train, y_test, model_params=None):
@@ -77,11 +63,7 @@ def train_figs(X_train, X_test, y_train, y_test, model_params=None):
 
     max_rules = model_params.get('max_rules', 12)
     figs = FIGSClassifier(max_rules=max_rules, random_state=42)
-    return _train_and_score(
-        figs, X_train, X_test, y_train, y_test,
-        "FIGS Classifier",
-        f"max_rules={max_rules}"
-    )
+    return train_and_score(figs, X_train, X_test, y_train, y_test)
 
 
 def train_ebc(X_train, X_test, y_train, y_test, model_params=None):
@@ -89,20 +71,7 @@ def train_ebc(X_train, X_test, y_train, y_test, model_params=None):
         model_params = {}
 
     ebc = ExplainableBoostingClassifier(random_state=42)
-    return _train_and_score(ebc, X_train, X_test, y_train, y_test, "Explainable Boosting Classifier")
-
-
-def train_boosted_rules(X_train, X_test, y_train, y_test, model_params=None):
-    if model_params is None:
-        model_params = {}
-
-    n_estimators = model_params.get('n_estimators', 10)
-    brc = BoostedRulesClassifier(n_estimators=n_estimators)
-    return _train_and_score(
-        brc, X_train, X_test, y_train, y_test,
-        "Boosted Rules Classifier",
-        f"n_estimators={n_estimators}"
-    )
+    return train_and_score(ebc, X_train, X_test, y_train, y_test)
 
 
 def train_rulefit(X_train, X_test, y_train, y_test, model_params=None):
@@ -111,11 +80,7 @@ def train_rulefit(X_train, X_test, y_train, y_test, model_params=None):
 
     max_rules = model_params.get('max_rules', 30)
     rfc = RuleFitClassifier(max_rules=max_rules, random_state=42)
-    return _train_and_score(
-        rfc, X_train, X_test, y_train, y_test,
-        "RuleFit Classifier",
-        f"max_rules={max_rules}"
-    )
+    return train_and_score(rfc, X_train, X_test, y_train, y_test)
 
 
 def train_ripper(X_train, X_test, y_train, y_test, model_params=None):
@@ -123,6 +88,4 @@ def train_ripper(X_train, X_test, y_train, y_test, model_params=None):
         model_params = {}
 
     ripper = lw.RIPPER()
-    model = _train_and_score(ripper, X_train, X_test, y_train, y_test, "RIPPER Classifier")
-    print(f"\nRules:\n{ripper}")
-    return model
+    return train_and_score(ripper, X_train, X_test, y_train, y_test)
