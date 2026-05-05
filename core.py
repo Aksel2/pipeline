@@ -1,18 +1,16 @@
-import json
-
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
 from encoding.encoding import collapse_observations, DataFrameEncoder
 from model_evaluate.evaluate import run_evaluation
-from model_train.models import prepare_features_and_target, train_dtc, train_ripper, train_figs, train_ebc, train_boosted_rules, train_rulefit
+from model_train.models import prepare_features_and_target, train_dtc, train_ripper, train_figs, train_ebc, train_rulefit
 from preprocessing.preprocess import preprocess_event_log_replay, preprocess_event_log
+from validation import validate_inputs
 
 MODEL_REGISTRY = [
     ("decision_tree_classifier", "Decision Tree Classifier", train_dtc, "decision_tree"),
     ("ripper_classifier", "RIPPER Classifier", train_ripper, "ripper"),
     ("figs_classifier", "FIGS Classifier", train_figs, "figs"),
-    ("boosted_rules_classifier", "Boosted Rules Classifier", train_boosted_rules, "boosted_rules"),
     ("rulefit_classifier", "RuleFit Classifier", train_rulefit, "rulefit"),
     ("explainable_boosting_classifier", "Explainable Boosting Classifier", train_ebc, "ebc"),
 ]
