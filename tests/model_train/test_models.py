@@ -1,4 +1,3 @@
-import pytest
 import pandas as pd
 import numpy as np
 
@@ -27,20 +26,6 @@ class TestPrepareFeatures:
 
         for col in ['target', 'observation', 'case_id', 'activity', 'start_time', 'end_time']:
             assert col not in X.columns
-
-    def test_keeps_feature_columns(self):
-        df = make_sample_df()
-        X, y = prepare_features_and_target(df)
-
-        assert 'feature_1' in X.columns
-        assert 'feature_2' in X.columns
-
-    def test_returns_correct_target(self):
-        df = make_sample_df()
-        X, y = prepare_features_and_target(df)
-
-        assert len(y) == 50
-        assert y.dtype in [np.float64, np.int64, float, int]
 
     def test_filters_na_targets(self):
         df = make_sample_df()

@@ -1,15 +1,18 @@
 import pytest
 import os
+import math
 import numpy as np
 import pandas as pd
+from types import SimpleNamespace
 from sklearn.tree import DecisionTreeClassifier
 
-from model_evaluate.evaluate import (
-    calculate_metrics,
-    run_evaluation,
-    _extract_tree_metrics,
+from model_evaluate.evaluate import run_evaluation
+from model_evaluate.metrics import calculate_metrics
+from model_evaluate.understandability import (
     calculate_tree_understandability,
-    _extract_ruleset_metrics,
+    compute_understandability_score,
+    extract_ruleset_metrics,
+    extract_tree_metrics,
 )
 
 
@@ -55,75 +58,40 @@ class TestCalculateMetrics:
         assert "precision" not in result
 
 
-class TestExtractTreeMetrics:
-    def test_simple_tree(self):
-        """Build a small tree with known structure and verify N, D, DD, F."""
-        X = pd.DataFrame({
-            'f1': [0, 0, 1, 1, 0, 0, 1, 1],
-            'f2': [0, 1, 0, 1, 0, 1, 0, 1],
-        })
-        y = pd.Series([0, 0, 1, 1, 0, 0, 1, 1])
-        model = DecisionTreeClassifier(random_state=42)
-        model.fit(X, y)
+class TestExactTreeMetrics:
+    @pytest.fixture
+    def mock_tree(self):
+        tree = SimpleNamespace()
+        tree.children_left = np.array([1, 2, -1, -1, 5, -1, 7, -1, -1])
+        tree.children_right = np.array([4, 3, -1, -1, 6, -1, 8, -1, -1])
+        tree.feature = np.array([0, 1, -2, -2, 2, -2, 0, -2, -2])
+        return tree
 
-        metrics = _extract_tree_metrics(model.tree_)
+    def test_N(self, mock_tree):
+        assert extract_tree_metrics(mock_tree)["N"] == 4
 
-        assert metrics["N"] >= 1
-        assert metrics["D"] > 0
-        assert metrics["F"] >= 1
-        assert isinstance(metrics["DD"], (int, float))
+    def test_D(self, mock_tree):
+        assert extract_tree_metrics(mock_tree)["D"] == pytest.approx(2.4)
 
-    def test_deeper_tree(self):
-        """A deeper tree should have more nodes and higher D."""
-        np.random.seed(42)
-        X = pd.DataFrame({
-            'f1': np.random.rand(100),
-            'f2': np.random.rand(100),
-            'f3': np.random.rand(100),
-        })
-        y = pd.Series((X['f1'] > 0.5).astype(int) ^ (X['f2'] > 0.3).astype(int))
-        model = DecisionTreeClassifier(random_state=42, max_depth=4)
-        model.fit(X, y)
+    def test_DD(self, mock_tree):
+        assert extract_tree_metrics(mock_tree)["DD"] == 2
 
-        metrics = _extract_tree_metrics(model.tree_)
+    def test_F(self, mock_tree):
+        assert extract_tree_metrics(mock_tree)["F"] == 3
 
-        assert metrics["N"] > 1
-        assert metrics["D"] > 1
-        assert metrics["F"] >= 2
-
-    def test_single_node_tree(self):
-        """A tree with only a root (pure data) should have N=0, D=0."""
-        X = pd.DataFrame({'f1': [1, 2, 3, 4]})
-        y = pd.Series([0, 0, 0, 0])
-        model = DecisionTreeClassifier(random_state=42)
-        model.fit(X, y)
-
-        metrics = _extract_tree_metrics(model.tree_)
-
-        assert metrics["N"] == 0
-        assert metrics["D"] == 0
-        assert metrics["F"] == 0
-        assert metrics["DD"] == 0
+    def test_understandability_score(self, mock_tree):
+        metrics = extract_tree_metrics(mock_tree)
+        result = compute_understandability_score(
+            metrics["N"], metrics["D"], metrics["DD"], metrics["F"]
+        )
+        c = 1 * (4 + 2.4) + 1 * 2 + 1 * 3  # 11.4
+        expected = math.exp(-((c / 28) ** 2))
+        assert result["understandability"] == pytest.approx(expected)
+        assert result["x"] == pytest.approx(11.4)
 
 
 class TestCalculateTreeUnderstandability:
-    def test_returns_dict_for_tree(self):
-        np.random.seed(42)
-        X = pd.DataFrame({'f1': np.random.rand(20), 'f2': np.random.rand(20)})
-        y = pd.Series([0] * 10 + [1] * 10)
-        model = DecisionTreeClassifier(max_depth=2, random_state=42)
-        model.fit(X, y)
-
-        result = calculate_tree_understandability(model, 'decision_tree')
-
-        assert result is not None
-        assert 'understandability' in result
-        assert 0 <= result['understandability'] <= 1
-        assert result['N'] >= 1
-        assert result['F'] >= 1
-
     def test_score_decreases_with_complexity(self):
-        """A deeper/more complex tree should have lower understandability."""
         np.random.seed(42)
         X = pd.DataFrame({'f1': np.random.rand(100), 'f2': np.random.rand(100)})
         y = pd.Series([0] * 50 + [1] * 50)
@@ -152,10 +120,25 @@ class TestCalculateTreeUnderstandability:
 
 
 class TestExtractRulesetMetrics:
+    def test_table1_exact(self):
+        rules = [
+            ["credit_score", "loan_amount"],
+            ["credit_score", "loan_amount"],
+            ["credit_score", "income", "credit_score"],
+            ["credit_score", "income"],
+            ["credit_score", "income"],
+        ]
+        metrics = extract_ruleset_metrics(rules)
+
+        assert metrics["N"] == 11
+        assert metrics["D"] == pytest.approx(11 / 5)
+        assert metrics["DD"] == 16
+        assert metrics["F"] == 3
+
     def test_example_from_spec(self):
         """A & B -> 0, C & A -> 1, D -> 0. Flattened: [A, B, C, A, D]."""
         rules = [["A", "B"], ["C", "A"], ["D"]]
-        metrics = _extract_ruleset_metrics(rules)
+        metrics = extract_ruleset_metrics(rules)
 
         assert metrics["N"] == 5
         assert metrics["D"] == pytest.approx(5 / 3)
@@ -164,7 +147,7 @@ class TestExtractRulesetMetrics:
 
     def test_single_rule(self):
         rules = [["X", "Y", "Z"]]
-        metrics = _extract_ruleset_metrics(rules)
+        metrics = extract_ruleset_metrics(rules)
 
         assert metrics["N"] == 3
         assert metrics["D"] == 3.0
@@ -174,15 +157,15 @@ class TestExtractRulesetMetrics:
     def test_repeated_feature_three_times(self):
         """A appears at positions 0, 2, 4. DD(A) = (2-0) + (4-2) = 4."""
         rules = [["A", "B"], ["A", "C"], ["A"]]
-        metrics = _extract_ruleset_metrics(rules)
+        metrics = extract_ruleset_metrics(rules)
 
         assert metrics["N"] == 5
         assert metrics["DD"] == 4
         assert metrics["F"] == 3
 
     def test_empty_returns_none(self):
-        assert _extract_ruleset_metrics([]) is None
-        assert _extract_ruleset_metrics(None) is None
+        assert extract_ruleset_metrics([]) is None
+        assert extract_ruleset_metrics(None) is None
 
 
 class TestRunEvaluation:

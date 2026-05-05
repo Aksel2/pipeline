@@ -1,5 +1,4 @@
 import pandas as pd
-import pytest
 
 from preprocessing.preprocess import preprocess_event_log
 
@@ -40,12 +39,12 @@ def make_df(case_id, activities):
 class TestPreprocessEventLog:
 
     def test_azzc(self):
-        """AZZC: A sets pending, C is outcome -> observation is A,Z,Z (everything before C)."""
+        """AZZC: A sets pending, C is outcome -> observation is A (up to pre-decision only)."""
         df = make_df("case1", ["A", "Z", "Z", "C"])
         result = preprocess_event_log(df, make_config())
 
-        assert len(result) == 3
-        assert result["activity"].tolist() == ["A", "Z", "Z"]
+        assert len(result) == 1
+        assert result["activity"].tolist() == ["A"]
         assert all(result["target"] == 1)
         assert all(result["observation"] == 1)
 
@@ -114,19 +113,19 @@ class TestPreprocessEventLog:
 
     def test_two_observations(self):
         """AZZBAZZB: Two complete decision cycles.
-        Obs 1: A,Z,Z (before first B). Obs 2: A,Z,Z,B,A,Z,Z (before second B)."""
+        Obs 1: A (up to pre-decision). Obs 2: A,Z,Z,B,A (full history up to second pre-decision)."""
         df = make_df("case1", ["A", "Z", "Z", "B", "A", "Z", "Z", "B"])
         result = preprocess_event_log(df, make_config())
 
         obs1 = result[result["observation"] == 1]
         obs2 = result[result["observation"] == 2]
 
-        assert len(obs1) == 3
-        assert obs1["activity"].tolist() == ["A", "Z", "Z"]
+        assert len(obs1) == 1
+        assert obs1["activity"].tolist() == ["A"]
         assert all(obs1["target"] == 0)
 
-        assert len(obs2) == 7
-        assert obs2["activity"].tolist() == ["A", "Z", "Z", "B", "A", "Z", "Z"]
+        assert len(obs2) == 5
+        assert obs2["activity"].tolist() == ["A", "Z", "Z", "B", "A"]
         assert all(obs2["target"] == 0)
 
     def test_outcome_without_decision_ignored(self):

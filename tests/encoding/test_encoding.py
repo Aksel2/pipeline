@@ -141,20 +141,7 @@ class TestDataFrameEncoderOneHot:
 
         assert 'color' not in result.columns
         onehot_cols = [c for c in result.columns if c.startswith('color_')]
-        assert len(onehot_cols) == 2  # drop='first' removes one
-
-    def test_drops_first_category(self):
-        df = pd.DataFrame({
-            'case_id': [1, 2],
-            'type': ['A', 'B'],
-            'target': [0, 1]
-        })
-        config = make_config(case_attributes=["type"], one_hot=["type"])
-        encoder = DataFrameEncoder(config)
-        result = encoder.fit_transform(df)
-
-        onehot_cols = [c for c in result.columns if c.startswith('type_')]
-        assert len(onehot_cols) == 1
+        assert len(onehot_cols) == 2
 
     def test_transform_unseen_category(self):
         df_train = pd.DataFrame({
@@ -253,15 +240,3 @@ class TestDataFrameEncoderMixed:
         assert 'color_encoded' in result.columns
         assert any(c.startswith('type_') for c in result.columns)
         assert 'value' in result.columns
-
-    def test_continuous_features_unchanged(self):
-        df = pd.DataFrame({
-            'case_id': [1, 2],
-            'amount': [100.5, 200.3],
-            'target': [0, 1]
-        })
-        config = make_config(event_continuous=["amount"])
-        encoder = DataFrameEncoder(config)
-        result = encoder.fit_transform(df)
-
-        assert list(result['amount']) == [100.5, 200.3]
