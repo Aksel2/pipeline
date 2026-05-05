@@ -1,5 +1,6 @@
 {
   "preprocess_config": {
+    "type": "log",
     "pre_decision_activities": ["Check loan type"],
     "post_decision_0_activities": ["Approve loan"],
     "post_decision_1_activities": ["Reject loan"],

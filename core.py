@@ -72,9 +72,8 @@ def pipeline(
 ):
     config, data, test_data = validate_inputs(input_logs_path, test_logs_path, config_path)
 
-    preprocess_config = config.get("preprocess_config", {})
-    use_replay = bool(preprocess_config.get("bpmn_model_path"))
-    if use_replay:
+    preprocess_config = config["preprocess_config"]
+    if preprocess_config["type"] == "bpmn":
         print("Using BPMN replay-based preprocessing")
         preprocess_fn = preprocess_event_log_replay
     else:
