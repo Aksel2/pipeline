@@ -47,11 +47,10 @@ def balance_dataset(df, strategy):
         print(f"\nOversampled class {minority_class} from {class_counts.min()} to {len(majority_df)}")
 
     balanced = balanced.sample(frac=1, random_state=42).reset_index(drop=True)
-    print(f"New distribution:\n{balanced['target'].value_counts()}")
     return balanced
 
 
-def _preprocess_and_encode(df_train, df_test, config, balancing_strategy):
+def preprocess_and_encode(df_train, df_test, config, balancing_strategy):
     df_train = collapse_observations(df_train, config)
     df_test = collapse_observations(df_test, config)
 
@@ -68,18 +67,14 @@ def _preprocess_and_encode(df_train, df_test, config, balancing_strategy):
 
 
 def pipeline(
-        input_logs_path: str,
-        test_logs_path: str = None,
-        test_percentage: float = None,
-        config_path: str = "config.json"
+        input_logs_path,
+        test_logs_path=None,
+        test_percentage=None,
+        config_path="config.json"
 ):
-    with open(config_path, 'r') as f:
-        config = json.load(f)
-
-    data = pd.read_csv(input_logs_path)
+    config, data, test_data = validate_inputs(input_logs_path, test_logs_path, config_path)
 
     preprocess_config = config.get("preprocess_config", {})
-
     use_replay = bool(preprocess_config.get("bpmn_model_path"))
     if use_replay:
         print("Using BPMN replay-based preprocessing")
@@ -87,15 +82,10 @@ def pipeline(
     else:
         preprocess_fn = preprocess_event_log
 
-    pre_decision_activities = preprocess_config.get("pre_decision_activities", [])
-    if not use_replay and not pre_decision_activities:
-        raise ValueError("Configuration must contain at least one pre_decision_activity")
-
     balancing_strategy = config.get("balancing_config", {}).get("strategy", "none")
 
     if test_logs_path is not None:
         print(f"Using separate test file: {test_logs_path}")
-        test_data = pd.read_csv(test_logs_path)
         df_train = preprocess_fn(data, config)
         df_test = preprocess_fn(test_data, config)
     else:
@@ -114,7 +104,7 @@ def pipeline(
         )
 
     if test_logs_path is not None:
-        df_train_final, df_test_final = _preprocess_and_encode(df_train, df_test, config, balancing_strategy)
+        df_train_final, df_test_final = preprocess_and_encode(df_train, df_test, config, balancing_strategy)
     else:
         df_train = balance_dataset(df_train, balancing_strategy)
         encoder = DataFrameEncoder(config)
@@ -124,10 +114,8 @@ def pipeline(
     df_train_final.to_csv('train_encoded.csv', index=False)
     df_test_final.to_csv('test_encoded.csv', index=False)
 
-    print(f"\nTrain set size: {len(df_train_final)}")
-    print(f"Test set size: {len(df_test_final)}")
-    print(f"Train target distribution:\n{df_train_final['target'].value_counts()}")
-    print(f"Test target distribution:\n{df_test_final['target'].value_counts()}")
+    print(f"\nTrain set: {len(df_train_final)}")
+    print(f"Test set: {len(df_test_final)}")
 
     X_train, y_train = prepare_features_and_target(df_train_final, config)
     X_test, y_test = prepare_features_and_target(df_test_final, config)
