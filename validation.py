@@ -23,15 +23,25 @@ def check_config(config):
     if not preprocess_config:
         raise ValueError("Configuration must contain 'preprocess_config'")
 
-    if preprocess_config.get("bpmn_model_path"):
+    mode = preprocess_config.get("type")
+    if mode not in ("log", "bpmn"):
+        raise ValueError(
+            f"'preprocess_config.type' must be 'log' or 'bpmn', got {mode}"
+        )
+
+    if mode == "bpmn":
+        if not preprocess_config.get("bpmn_model_path"):
+            raise ValueError(
+                "'bpmn_model_path' is required when 'type' is 'bpmn'"
+            )
         if not preprocess_config.get("target_gateway_id"):
             raise ValueError(
-                "'target_gateway_id' is required when 'bpmn_model_path' is set"
+                "'target_gateway_id' is required when 'type' is 'bpmn'"
             )
         outcome_mapping = preprocess_config.get("outcome_mapping")
         if not outcome_mapping:
             raise ValueError(
-                "'outcome_mapping' is required when 'bpmn_model_path' is set"
+                "'outcome_mapping' is required when 'type' is 'bpmn'"
             )
         for flow_id, outcome in outcome_mapping.items():
             if outcome not in (0, 1):
@@ -46,7 +56,7 @@ def check_config(config):
         ):
             if not preprocess_config.get(field):
                 raise ValueError(
-                    f"'{field}' must be a non-empty list when not in BPMN mode"
+                    f"'{field}' must be a non-empty list when 'type' is 'log'"
                 )
 
     strategy = config.get("balancing_config", {}).get("strategy", "none")
@@ -108,7 +118,7 @@ def check_event_log(df, config, source):
                     f"Column '{col}' from 'encoding_config.{field}' not found in {source}"
                 )
 
-    if not preprocess_config.get("bpmn_model_path"):
+    if preprocess_config.get("type") == "log":
         activity_col_name = column_names.get("activity", "activity").lower()
         matching = [c for c in df.columns if c.lower() == activity_col_name]
         if matching:
@@ -172,9 +182,11 @@ def validate_inputs(input_logs_path, test_logs_path, config_path):
         config = json.load(f)
     check_config(config)
 
-    bpmn_path = config["preprocess_config"].get("bpmn_model_path", "")
-    if bpmn_path and not os.path.isfile(bpmn_path):
-        raise FileNotFoundError(f"BPMN model file not found: {bpmn_path}")
+    preprocess_config = config["preprocess_config"]
+    if preprocess_config["type"] == "bpmn":
+        bpmn_path = preprocess_config["bpmn_model_path"]
+        if not os.path.isfile(bpmn_path):
+            raise FileNotFoundError(f"BPMN model file not found: {bpmn_path}")
 
     train_data = pd.read_csv(input_logs_path)
     check_event_log(train_data, config, source=input_logs_path)
@@ -184,8 +196,8 @@ def validate_inputs(input_logs_path, test_logs_path, config_path):
         test_data = pd.read_csv(test_logs_path)
         check_event_log(test_data, config, source=test_logs_path)
 
-    if bpmn_path:
-        bpmn_graph = BPMNGraph.from_bpmn_path(Path(bpmn_path))
+    if preprocess_config["type"] == "bpmn":
+        bpmn_graph = BPMNGraph.from_bpmn_path(Path(preprocess_config["bpmn_model_path"]))
         check_bpmn(bpmn_graph, config)
 
     return config, train_data, test_data

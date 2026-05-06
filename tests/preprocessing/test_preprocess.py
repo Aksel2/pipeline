@@ -6,6 +6,7 @@ from preprocessing.preprocess import preprocess_event_log
 def make_config():
     return {
         "preprocess_config": {
+            "type": "log",
             "pre_decision_activities": ["A"],
             "post_decision_0_activities": ["B"],
             "post_decision_1_activities": ["C"],

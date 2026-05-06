@@ -27,6 +27,7 @@ def make_event_log():
 def make_config(output_dir):
     return {
         "preprocess_config": {
+            "type": "log",
             "pre_decision_activities": ["Assess loan risk"],
             "post_decision_0_activities": ["Approve application"],
             "post_decision_1_activities": ["Reject application"],
