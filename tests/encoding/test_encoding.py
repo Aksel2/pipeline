@@ -2,7 +2,7 @@ import pytest
 import pandas as pd
 
 
-from encoding.encoding import collapse_observations, DataFrameEncoder
+from decision_pipeline.encoding.encoding import collapse_observations, DataFrameEncoder
 
 
 def make_config(one_hot=None, target_based=None, aggregation=None,

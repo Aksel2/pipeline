@@ -1,33 +1,34 @@
+import argparse
+import os
+
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-from encoding.encoding import collapse_observations, DataFrameEncoder
-from model_evaluate.evaluate import run_evaluation
-from model_train.models import prepare_features_and_target, train_dtc, train_ripper, train_figs, train_ebc, train_rulefit
-from preprocessing.preprocess import preprocess_event_log_replay, preprocess_event_log
-from validation import validate_inputs
+from decision_pipeline.encoding.encoding import collapse_observations, DataFrameEncoder
+from decision_pipeline.model_evaluate.evaluate import run_evaluation
+from decision_pipeline.model_train.models import prepare_features_and_target, train_dtc, train_ripper, train_figs, train_ebc, train_rulefit, train_skope
+from decision_pipeline.preprocessing.preprocess import preprocess_event_log_replay, preprocess_event_log
+from decision_pipeline.validation import validate_inputs
 
 MODEL_REGISTRY = [
     ("decision_tree_classifier", "Decision Tree Classifier", train_dtc, "decision_tree"),
     ("ripper_classifier", "RIPPER Classifier", train_ripper, "ripper"),
     ("figs_classifier", "FIGS Classifier", train_figs, "figs"),
     ("rulefit_classifier", "RuleFit Classifier", train_rulefit, "rulefit"),
+    ("skope_rules_classifier", "Skope Rules Classifier", train_skope, "skope_rules"),
     ("explainable_boosting_classifier", "Explainable Boosting Classifier", train_ebc, "ebc"),
 ]
 
 
 def balance_dataset(df, strategy):
-    valid_strategies = {"none", "undersample", "oversample"}
-    if strategy not in valid_strategies:
-        raise ValueError(
-            f"Invalid balancing strategy '{strategy}'. Must be one of: {sorted(valid_strategies)}"
-        )
-
     if strategy == "none":
         return df
 
     class_counts = df['target'].value_counts()
-    if len(class_counts) != 2 or class_counts.min() == class_counts.max():
+    if len(class_counts) < 2:
+        print(f"\nWarning: training set has only one class ({class_counts.index.tolist()}); skipping balancing.")
+        return df
+    if class_counts.min() == class_counts.max():
         return df
 
     minority_class = class_counts.idxmin()
@@ -72,6 +73,9 @@ def pipeline(
 ):
     config, data, test_data = validate_inputs(input_logs_path, test_logs_path, config_path)
 
+    output_dir = config.get("evaluation_config", {}).get("output_directory", "outputs")
+    os.makedirs(output_dir, exist_ok=True)
+
     preprocess_config = config["preprocess_config"]
     if preprocess_config["type"] == "bpmn":
         print("Using BPMN replay-based preprocessing")
@@ -85,12 +89,16 @@ def pipeline(
         print(f"Using separate test file: {test_logs_path}")
         df_train = preprocess_fn(data, config)
         df_test = preprocess_fn(test_data, config)
+        pd.concat([df_train, df_test], ignore_index=True).to_csv(
+            os.path.join(output_dir, "preprocessed_data.csv"), index=False
+        )
+        df_train_final, df_test_final = preprocess_and_encode(df_train, df_test, config, balancing_strategy)
     else:
         if test_percentage is None:
             test_percentage = 0.2
         print(f"Splitting data with test_percentage: {test_percentage}")
         df = preprocess_fn(data, config)
-        df.to_csv('preprocessed_data.csv', index=False)
+        df.to_csv(os.path.join(output_dir, "preprocessed_data.csv"), index=False)
         df_filtered = collapse_observations(df, config)
         df_filtered['target'] = pd.to_numeric(df_filtered['target'])
         df_train, df_test = train_test_split(
@@ -99,17 +107,13 @@ def pipeline(
             random_state=42,
             stratify=df_filtered['target']
         )
-
-    if test_logs_path is not None:
-        df_train_final, df_test_final = preprocess_and_encode(df_train, df_test, config, balancing_strategy)
-    else:
         df_train = balance_dataset(df_train, balancing_strategy)
         encoder = DataFrameEncoder(config)
         df_train_final = encoder.fit_transform(df_train)
         df_test_final = encoder.transform(df_test)
 
-    df_train_final.to_csv('train_encoded.csv', index=False)
-    df_test_final.to_csv('test_encoded.csv', index=False)
+    df_train_final.to_csv(os.path.join(output_dir, "train_encoded.csv"), index=False)
+    df_test_final.to_csv(os.path.join(output_dir, "test_encoded.csv"), index=False)
 
     print(f"\nTrain set: {len(df_train_final)}")
     print(f"Test set: {len(df_test_final)}")
@@ -129,7 +133,7 @@ def pipeline(
         print(f"\nTraining {display_name}...")
 
         model_params = models_config.get(config_key, {})
-        model = train_fn(X_train, X_test, y_train, y_test, model_params)
+        model = train_fn(X_train, y_train, model_params)
         trained_models[model_key] = {
             'model': model,
             'X_train': X_train,
@@ -149,11 +153,23 @@ def pipeline(
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run the decision pipeline.")
+    parser.add_argument("--input", required=True, help="Path to the input event log CSV")
+    parser.add_argument("--config", default="config.json", help="Path to the config JSON (default: config.json)")
+    parser.add_argument("--test", default=None, help="Optional path to a separate test event log CSV")
+    parser.add_argument(
+        "--test-percentage",
+        type=float,
+        default=0.2,
+        help="Test split percentage when no --test file is given (default: 0.2)",
+    )
+    args = parser.parse_args()
+
     train_df, test_df, trained_models, evaluation_results = pipeline(
-        input_logs_path="new_data/renewed_logs.csv",
-        test_logs_path=None,
-        test_percentage=0.2,
-        config_path="config.json"
+        input_logs_path=args.input,
+        test_logs_path=args.test,
+        test_percentage=args.test_percentage,
+        config_path=args.config,
     )
 
     print(f"\nPipeline complete. Trained {len(trained_models)} models.")

@@ -2,7 +2,7 @@ import pytest
 import json
 import pandas as pd
 
-from core import pipeline
+from decision_pipeline.core import pipeline
 
 
 def make_event_log():

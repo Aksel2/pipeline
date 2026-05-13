@@ -1,6 +1,6 @@
 import pandas as pd
 
-from preprocessing.preprocess import preprocess_event_log
+from decision_pipeline.preprocessing.preprocess import preprocess_event_log
 
 
 def make_config():

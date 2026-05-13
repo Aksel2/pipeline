@@ -1,14 +1,12 @@
 from sklearn.metrics import (
     accuracy_score,
-    confusion_matrix,
-    classification_report,
     f1_score,
     precision_score,
     recall_score,
     roc_auc_score,
 )
 
-from model_evaluate.understandability import (
+from decision_pipeline.model_evaluate.understandability import (
     calculate_ruleset_understandability,
     calculate_tree_understandability,
 )
@@ -56,31 +54,20 @@ def predict_with_proba(model, X):
     return y_pred, y_proba
 
 
-def evaluate_model(model, X_train, X_test, y_train, y_test, model_name, metrics_list=None):
-    y_train_pred, y_train_proba = predict_with_proba(model, X_train)
+def evaluate_model(model, X_test, y_test, model_name, metrics_list=None, tree_kwargs=None, ruleset_kwargs=None):
     y_test_pred, y_test_proba = predict_with_proba(model, X_test)
-
-    train_metrics = calculate_metrics(y_train, y_train_pred, y_train_proba, metrics_list)
     test_metrics = calculate_metrics(y_test, y_test_pred, y_test_proba, metrics_list)
 
-    train_cm = confusion_matrix(y_train, y_train_pred)
-    test_cm = confusion_matrix(y_test, y_test_pred)
-
-    test_report = classification_report(y_test, y_test_pred, output_dict=True)
-
-    model_name_lower = model_name.lower()
-    if any(name in model_name_lower for name in ['ripper', 'rulefit']):
-        understandability_result = calculate_ruleset_understandability(model, model_name)
+    tree_kwargs = tree_kwargs or {}
+    ruleset_kwargs = ruleset_kwargs or {}
+    if model_name in {'ripper', 'rulefit', 'skope_rules'}:
+        understandability_result = calculate_ruleset_understandability(model, model_name, **ruleset_kwargs)
     else:
-        understandability_result = calculate_tree_understandability(model, model_name)
+        understandability_result = calculate_tree_understandability(model, model_name, **tree_kwargs)
 
     return {
         'model_name': model_name,
-        'train_metrics': train_metrics,
         'test_metrics': test_metrics,
-        'train_confusion_matrix': train_cm,
-        'test_confusion_matrix': test_cm,
-        'classification_report': test_report,
         'y_test': y_test,
         'y_test_pred': y_test_pred,
         'y_test_proba': y_test_proba,
@@ -88,7 +75,7 @@ def evaluate_model(model, X_train, X_test, y_train, y_test, model_name, metrics_
     }
 
 
-def evaluate_all_models(trained_models, metrics_list=None):
+def evaluate_all_models(trained_models, metrics_list=None, tree_kwargs=None, ruleset_kwargs=None):
     all_results = {}
 
     for model_name, model_data in trained_models.items():
@@ -96,12 +83,12 @@ def evaluate_all_models(trained_models, metrics_list=None):
 
         results = evaluate_model(
             model_data['model'],
-            model_data['X_train'],
             model_data['X_test'],
-            model_data['y_train'],
             model_data['y_test'],
             model_name,
-            metrics_list
+            metrics_list,
+            tree_kwargs,
+            ruleset_kwargs,
         )
         all_results[model_name] = results
 

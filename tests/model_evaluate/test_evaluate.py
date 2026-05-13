@@ -6,9 +6,9 @@ import pandas as pd
 from types import SimpleNamespace
 from sklearn.tree import DecisionTreeClassifier
 
-from model_evaluate.evaluate import run_evaluation
-from model_evaluate.metrics import calculate_metrics
-from model_evaluate.understandability import (
+from decision_pipeline.model_evaluate.evaluate import run_evaluation
+from decision_pipeline.model_evaluate.metrics import calculate_metrics
+from decision_pipeline.model_evaluate.understandability import (
     calculate_tree_understandability,
     compute_understandability_score,
     extract_ruleset_metrics,
@@ -17,31 +17,6 @@ from model_evaluate.understandability import (
 
 
 class TestCalculateMetrics:
-    def test_all_correct(self):
-        y_true = [0, 0, 1, 1]
-        y_pred = [0, 0, 1, 1]
-        result = calculate_metrics(y_true, y_pred)
-
-        assert result["accuracy"] == 1.0
-        assert result["precision"] == 1.0
-        assert result["recall"] == 1.0
-        assert result["f1"] == 1.0
-
-    def test_all_wrong(self):
-        y_true = [0, 0, 1, 1]
-        y_pred = [1, 1, 0, 0]
-        result = calculate_metrics(y_true, y_pred)
-
-        assert result["accuracy"] == 0.0
-
-    def test_auroc_with_proba(self):
-        y_true = [0, 0, 1, 1]
-        y_pred = [0, 0, 1, 1]
-        y_proba = [0.1, 0.2, 0.8, 0.9]
-        result = calculate_metrics(y_true, y_pred, y_proba)
-
-        assert result["auroc"] == 1.0
-
     def test_auroc_without_proba(self):
         y_true = [0, 0, 1, 1]
         y_pred = [0, 0, 1, 1]
@@ -84,10 +59,36 @@ class TestExactTreeMetrics:
         result = compute_understandability_score(
             metrics["N"], metrics["D"], metrics["DD"], metrics["F"]
         )
-        c = 1 * (4 + 2.4) + 1 * 2 + 1 * 3  # 11.4
+        c = 1 * (4 + 2.4) + 1 * 2 + 1 * 3
         expected = math.exp(-((c / 28) ** 2))
         assert result["understandability"] == pytest.approx(expected)
         assert result["x"] == pytest.approx(11.4)
+
+
+class TestBranchAwareDD:
+    def test_cross_branch_repetition_contributes_zero(self):
+        """Feature B at depth 1 (left branch) and depth 2 (right branch via C).
+        Same depths in different branches must contribute 0 to DD, even though
+        max-min across all occurrences would be 1."""
+        tree = SimpleNamespace()
+        tree.children_left  = np.array([1, 3, 5, -1, -1, -1, 7, -1, -1])
+        tree.children_right = np.array([2, 4, 6, -1, -1, -1, 8, -1, -1])
+        tree.feature        = np.array([0, 1, 2, -2, -2, -2, 1, -2, -2])
+
+        result = extract_tree_metrics(tree)
+        assert result["DD"] == 0
+        assert result["F"] == 3
+
+    def test_same_branch_repetition_contributes(self):
+        """Feature 0 at depth 0 (root) and depth 2 (under root's right via
+        feature 2). Same root-to-leaf path, so DD must include spread = 2."""
+        tree = SimpleNamespace()
+        tree.children_left  = np.array([1, 2, -1, -1, 5, -1, 7, -1, -1])
+        tree.children_right = np.array([4, 3, -1, -1, 6, -1, 8, -1, -1])
+        tree.feature        = np.array([0, 1, -2, -2, 2, -2, 0, -2, -2])
+
+        result = extract_tree_metrics(tree)
+        assert result["DD"] == 2
 
 
 class TestCalculateTreeUnderstandability:

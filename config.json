@@ -2,8 +2,8 @@
   "preprocess_config": {
     "type": "log",
     "pre_decision_activities": ["Check loan type"],
-    "post_decision_0_activities": ["Approve loan"],
-    "post_decision_1_activities": ["Reject loan"],
+    "post_decision_0_activities": ["Reject loan"],
+    "post_decision_1_activities": ["Approve loan"],
     "column_names": {
       "case_id": "case_id",
       "activity": "activity",
@@ -42,18 +42,41 @@
       "max_rules": 12
     },
     "ripper_classifier": {
-      "enabled": true
+      "enabled": true,
+      "n_discretize_bins": 8,
+      "max_rule_conds": 5,
+      "dl_allowance": 32,
+      "k": 3,
+      "prune_size": 0.33
     },
     "rulefit_classifier": {
       "enabled": true,
-      "max_rules": 30
+      "max_rules": 12,
+      "n_estimators": 20,
+      "alpha": 0.1,
+      "exp_rand_tree_size": false,
+      "include_linear": false
+    },
+    "skope_rules_classifier": {
+      "enabled": true,
+      "n_estimators": 30,
+      "max_depth": 3,
+      "precision_min": 0.6,
+      "recall_min": 0.05
     },
     "explainable_boosting_classifier": {
       "enabled": true
     }
   },
   "evaluation_config": {
-    "metrics": ["accuracy", "precision", "auroc"],
-    "output_directory": "outputs"
+    "metrics": ["accuracy", "auroc"],
+    "output_directory": "outputs",
+    "understandability_config": {
+      "w1": 0.3333,
+      "w2": 0.3333,
+      "w3": 0.3334,
+      "tree":    { "s": 16 },
+      "ruleset": { "s": 24 }
+    }
   }
 }

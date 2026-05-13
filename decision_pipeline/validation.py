@@ -2,52 +2,35 @@ import json
 import os
 from pathlib import Path
 
+import jsonschema
 import pandas as pd
 
-from preprocessing.bpm_graph import BPMNGraph
+from decision_pipeline.preprocessing.bpm_graph import BPMNGraph
 
 
-VALID_BALANCING_STRATEGIES = {"none", "undersample", "oversample"}
-VALID_METRICS = {"accuracy", "precision", "recall", "f1", "auroc"}
-VALID_MODELS = {
-    "decision_tree_classifier",
-    "figs_classifier",
-    "ripper_classifier",
-    "rulefit_classifier",
-    "explainable_boosting_classifier",
-}
+_SCHEMA_PATH = Path(__file__).resolve().parent / "config.schema.json"
+
+
+def _load_schema():
+    with open(_SCHEMA_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 def check_config(config):
-    preprocess_config = config.get("preprocess_config")
-    if not preprocess_config:
-        raise ValueError("Configuration must contain 'preprocess_config'")
+    schema = _load_schema()
+    try:
+        jsonschema.validate(config, schema)
+    except jsonschema.ValidationError as e:
+        path = ".".join(str(p) for p in e.absolute_path) or "<root>"
+        raise ValueError(f"Config validation failed at '{path}': {e.message}")
 
-    mode = preprocess_config.get("type")
-    if mode not in ("log", "bpmn"):
-        raise ValueError(
-            f"'preprocess_config.type' must be 'log' or 'bpmn', got {mode}"
-        )
+    preprocess_config = config["preprocess_config"]
+    mode = preprocess_config["type"]
 
     if mode == "bpmn":
-        if not preprocess_config.get("bpmn_model_path"):
-            raise ValueError(
-                "'bpmn_model_path' is required when 'type' is 'bpmn'"
-            )
-        if not preprocess_config.get("target_gateway_id"):
-            raise ValueError(
-                "'target_gateway_id' is required when 'type' is 'bpmn'"
-            )
-        outcome_mapping = preprocess_config.get("outcome_mapping")
-        if not outcome_mapping:
-            raise ValueError(
-                "'outcome_mapping' is required when 'type' is 'bpmn'"
-            )
-        for flow_id, outcome in outcome_mapping.items():
-            if outcome not in (0, 1):
-                raise ValueError(
-                    f"'outcome_mapping' values must be 0 or 1, got {outcome!r} for flow {flow_id!r}"
-                )
+        for field in ("bpmn_model_path", "target_gateway_id", "outcome_mapping"):
+            if not preprocess_config.get(field):
+                raise ValueError(f"'{field}' is required when 'type' is 'bpmn'")
     else:
         for field in (
             "pre_decision_activities",
@@ -59,36 +42,42 @@ def check_config(config):
                     f"'{field}' must be a non-empty list when 'type' is 'log'"
                 )
 
-    strategy = config.get("balancing_config", {}).get("strategy", "none")
-    if strategy not in VALID_BALANCING_STRATEGIES:
-        raise ValueError(
-            f"'balancing_config.strategy' must be one of "
-            f"{sorted(VALID_BALANCING_STRATEGIES)}, got {strategy!r}"
-        )
-
-    for model_name in config.get("models_config", {}):
-        if model_name not in VALID_MODELS:
+    understandability_cfg = config.get("evaluation_config", {}).get("understandability_config")
+    if understandability_cfg is not None:
+        weights_present = [k for k in ("w1", "w2", "w3") if k in understandability_cfg]
+        if 0 < len(weights_present) < 3:
+            missing = sorted({"w1", "w2", "w3"} - set(weights_present))
             raise ValueError(
-                f"Unknown model {model_name!r} in 'models_config'. "
-                f"Valid models: {sorted(VALID_MODELS)}"
+                f"'understandability_config' weights w1, w2, w3 must be set together or not at all. "
+                f"Missing: {missing}"
             )
-
-    for metric in config.get("evaluation_config", {}).get("metrics", []):
-        if metric not in VALID_METRICS:
-            raise ValueError(
-                f"Unknown metric {metric!r} in 'evaluation_config.metrics'. "
-                f"Valid metrics: {sorted(VALID_METRICS)}"
-            )
+        if len(weights_present) == 3:
+            weights_sum = sum(understandability_cfg[k] for k in weights_present)
+            if abs(weights_sum - 1.0) > 1e-6:
+                raise ValueError(
+                    f"'understandability_config' weights w1+w2+w3 must sum to 1, got {weights_sum}"
+                )
 
     encoding_config = config.get("encoding_config", {})
-    aggregation = [c.lower() for c in encoding_config.get("encoding_strategies", {}).get("aggregation", [])]
-    continuous = [c.lower() for c in encoding_config.get("event_attributes_continuous", [])]
-    invalid = [c for c in aggregation if c not in continuous]
-    if invalid:
+    strategies = encoding_config.get("encoding_strategies", {})
+    continuous = {c.lower() for c in encoding_config.get("event_attributes_continuous", [])}
+    categorical = {c.lower() for c in encoding_config.get("case_attributes", [])} | {
+        c.lower() for c in encoding_config.get("event_attributes_discrete", [])
+    }
+
+    invalid_agg = [c for c in strategies.get("aggregation", []) if c.lower() not in continuous]
+    if invalid_agg:
         raise ValueError(
             f"Columns in 'encoding_strategies.aggregation' must be declared in "
-            f"'event_attributes_continuous': {invalid}"
+            f"'event_attributes_continuous': {invalid_agg}"
         )
+    for key in ("one-hot", "target-based"):
+        invalid = [c for c in strategies.get(key, []) if c.lower() not in categorical]
+        if invalid:
+            raise ValueError(
+                f"Columns in 'encoding_strategies.{key}' must be declared in "
+                f"'case_attributes' or 'event_attributes_discrete': {invalid}"
+            )
 
 
 def check_event_log(df, config, source):
@@ -178,7 +167,7 @@ def validate_inputs(input_logs_path, test_logs_path, config_path):
     if test_logs_path is not None and not os.path.isfile(test_logs_path):
         raise FileNotFoundError(f"Test log file not found: {test_logs_path}")
 
-    with open(config_path, 'r') as f:
+    with open(config_path, "r") as f:
         config = json.load(f)
     check_config(config)
 

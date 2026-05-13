@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from preprocessing.bpm_graph import BPMNNodeType, BPMNGraph
+from decision_pipeline.preprocessing.bpm_graph import BPMNNodeType, BPMNGraph
 
 
 def extract_column_mapping(config):

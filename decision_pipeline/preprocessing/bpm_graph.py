@@ -158,7 +158,7 @@ class BPMNGraph:
             for flow_id in decision_made:
                 if flow_id in self._outcome_mapping:
                     self._gateway_decisions.append(
-                        (self._current_task_index, self._outcome_mapping[flow_id])
+                        (self._last_completed_task_index, self._outcome_mapping[flow_id])
                     )
 
     def set_element_probabilities(self, element_probability, task_resource_probability):
@@ -318,6 +318,7 @@ class BPMNGraph:
         self._outcome_mapping = outcome_mapping or {}
         self._gateway_decisions = []
         self._current_task_index = -1
+        self._last_completed_task_index = -1
         task_enabling = list()
         p_state = ProcessState(self)
         fired_tasks = list()
@@ -354,6 +355,7 @@ class BPMNGraph:
             if el_id is None:
                 continue
             p_state.add_token(self.element_info[el_id].outgoing_flows[0])
+            self._last_completed_task_index = current_index
             if current_index in pending_tasks:
                 for pending_index in pending_tasks[current_index]:
                     self.try_firing_alternative(
@@ -398,6 +400,7 @@ class BPMNGraph:
         self._outcome_mapping = {}
         self._gateway_decisions = []
         self._current_task_index = -1
+        self._last_completed_task_index = -1
 
         if target_gateway_id is not None:
             return is_correct, fired_tasks, p_state.pending_tokens(), gateway_decisions
