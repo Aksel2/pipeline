@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 
 import jsonschema
+from jsonschema.exceptions import ValidationError
 import pandas as pd
 
 from decision_pipeline.preprocessing.bpm_graph import BPMNGraph
@@ -20,7 +21,7 @@ def check_config(config):
     schema = _load_schema()
     try:
         jsonschema.validate(config, schema)
-    except jsonschema.ValidationError as e:
+    except ValidationError as e:
         path = ".".join(str(p) for p in e.absolute_path) or "<root>"
         raise ValueError(f"Config validation failed at '{path}': {e.message}")
 

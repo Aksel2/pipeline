@@ -1,0 +1,526 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Pipeline Configuration",
+  "description": "Configuration schema for the explainable AI pipeline. Controls preprocessing, encoding, model training, and evaluation.",
+  "type": "object",
+  "required": ["preprocess_config"],
+  "additionalProperties": false,
+  "properties": {
+    "preprocess_config": {
+      "type": "object",
+      "description": "Defines how the event log is turned into labeled observations. The 'type' field selects between activity-based ('log') or BPMN replay-based ('bpmn') preprocessing.",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Preprocessing mode. 'log' = activity-based (matches activity names in the event log). 'bpmn' = BPMN replay-based (replays the trace through a BPMN model and captures decisions at the configured target gateway).",
+          "enum": ["log", "bpmn"]
+        },
+        "column_names": {
+          "type": "object",
+          "description": "Maps your CSV column names to the standard names the pipeline expects. All matching is case-insensitive.",
+          "additionalProperties": false,
+          "properties": {
+            "case_id": {
+              "type": "string",
+              "description": "Column containing the case/process instance identifier.",
+              "default": "case_id"
+            },
+            "activity": {
+              "type": "string",
+              "description": "Column containing the activity/task name.",
+              "default": "activity"
+            },
+            "start_time": {
+              "type": "string",
+              "description": "Column containing the activity start timestamp.",
+              "default": "start_time"
+            },
+            "end_time": {
+              "type": "string",
+              "description": "Column containing the activity end timestamp.",
+              "default": "end_time"
+            }
+          }
+        },
+        "pre_decision_activities": {
+          "type": "array",
+          "description": "Activity names that signal a pending decision point. Required in activity-based mode. At least one must be specified.",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "post_decision_0_activities": {
+          "type": "array",
+          "description": "Activity names that represent outcome class 0 (e.g. 'Approve'). Required in activity-based mode. At least one must be specified.",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "post_decision_1_activities": {
+          "type": "array",
+          "description": "Activity names that represent outcome class 1 (e.g. 'Reject'). Required in activity-based mode. At least one must be specified.",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "bpmn_model_path": {
+          "type": "string",
+          "description": "Path to a BPMN XML file. If provided (non-empty), the pipeline uses BPMN replay-based preprocessing instead of activity-based. Leave empty or omit for activity-based mode."
+        },
+        "target_gateway_id": {
+          "type": "string",
+          "description": "ID of the BPMN gateway where the decision is captured. Required when bpmn_model_path is provided."
+        },
+        "outcome_mapping": {
+          "type": "object",
+          "description": "Maps outgoing flow IDs from the target gateway to binary outcomes (0 or 1). Required when bpmn_model_path is provided.",
+          "additionalProperties": {
+            "type": "integer",
+            "enum": [0, 1]
+          }
+        }
+      }
+    },
+    "encoding_config": {
+      "type": "object",
+      "description": "Defines which columns are attributes, their types, and how categorical features are encoded.",
+      "additionalProperties": false,
+      "properties": {
+        "case_attributes": {
+          "type": "array",
+          "description": "Attributes that are constant per case (e.g. loan_type, client_type). These are categorical and cannot be aggregated.",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "event_attributes_continuous": {
+          "type": "array",
+          "description": "Numeric event-level attributes (e.g. loan_amount, duration). These can be summed via aggregation.",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "event_attributes_discrete": {
+          "type": "array",
+          "description": "Categorical event-level attributes. Encoded via one-hot or target-based encoding.",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "encoding_strategies": {
+          "type": "object",
+          "description": "Controls how each attribute is encoded. Unspecified categorical attributes default to one-hot encoding.",
+          "additionalProperties": false,
+          "properties": {
+            "one-hot": {
+              "type": "array",
+              "description": "Attributes to one-hot encode. Each category becomes a binary column; one category is dropped to avoid multicollinearity.",
+              "items": { "type": "string" },
+              "default": []
+            },
+            "target-based": {
+              "type": "array",
+              "description": "Attributes to target-encode. Each category is replaced with the mean target value for that category in the training set.",
+              "items": { "type": "string" },
+              "default": []
+            },
+            "aggregation": {
+              "type": "array",
+              "description": "Continuous event attributes to sum when collapsing observations. Only columns listed in event_attributes_continuous are valid here.",
+              "items": { "type": "string" },
+              "default": []
+            }
+          }
+        }
+      }
+    },
+    "balancing_config": {
+      "type": "object",
+      "description": "Controls class imbalance handling. Only applied to the training set.",
+      "additionalProperties": false,
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "description": "Balancing strategy. 'none' = no balancing, 'undersample' = reduce majority class to minority count, 'oversample' = duplicate minority class to majority count.",
+          "enum": ["none", "undersample", "oversample"],
+          "default": "none"
+        }
+      }
+    },
+    "models_config": {
+      "type": "object",
+      "description": "Defines which models to train and their hyperparameters. Each model can be independently enabled/disabled. Any key besides 'enabled' is forwarded as a keyword argument to the underlying model constructor, so any hyperparameter the library accepts can be tuned here. Omit a key to use the pipeline default (defaults are chosen to produce compact, interpretable models).",
+      "additionalProperties": false,
+      "properties": {
+        "decision_tree_classifier": {
+          "type": "object",
+          "description": "Sklearn DecisionTreeClassifier. Any extra key is passed straight through to the constructor.",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Whether to train this model.",
+              "default": false
+            },
+            "max_depth": {
+              "type": ["integer", "null"],
+              "description": "Maximum tree depth. null = no limit.",
+              "default": 10,
+              "minimum": 1
+            },
+            "criterion": {
+              "type": "string",
+              "description": "Split quality function.",
+              "enum": ["gini", "entropy", "log_loss"],
+              "default": "gini"
+            },
+            "class_weight": {
+              "description": "Class weighting. null = equal weights, 'balanced' = weights inversely proportional to class frequency, or a dict mapping class -> weight.",
+              "default": "balanced"
+            },
+            "min_samples_split": {
+              "type": ["integer", "number"],
+              "description": "Minimum samples required to split an internal node. Int = absolute count, float in (0,1) = fraction of total.",
+              "minimum": 0
+            },
+            "min_samples_leaf": {
+              "type": ["integer", "number"],
+              "description": "Minimum samples required at a leaf node.",
+              "minimum": 0
+            },
+            "ccp_alpha": {
+              "type": "number",
+              "description": "Cost-complexity pruning strength. Higher values prune more aggressively.",
+              "minimum": 0
+            },
+            "max_features": {
+              "description": "Number of features to consider when looking for the best split. int, float, 'sqrt', 'log2', or null."
+            },
+            "max_leaf_nodes": {
+              "type": ["integer", "null"],
+              "description": "Grow a tree with at most this many leaf nodes (best-first). null = unlimited.",
+              "minimum": 2
+            },
+            "splitter": {
+              "type": "string",
+              "enum": ["best", "random"]
+            },
+            "random_state": {
+              "type": ["integer", "null"],
+              "description": "Seed for reproducibility. Defaults to 42.",
+              "default": 42
+            }
+          }
+        },
+        "figs_classifier": {
+          "type": "object",
+          "description": "FIGS (Fast Interpretable Greedy-tree Sums). Any extra key is passed to FIGSClassifier.",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "max_rules": {
+              "type": "integer",
+              "description": "Maximum number of rules/splits across all trees.",
+              "default": 12,
+              "minimum": 1
+            },
+            "max_trees": {
+              "type": ["integer", "null"],
+              "description": "Maximum number of trees in the additive ensemble. null = unlimited.",
+              "minimum": 1
+            },
+            "max_features": {
+              "description": "Number of features to consider per split. int, float, 'sqrt', 'log2', or null."
+            },
+            "min_impurity_decrease": {
+              "type": "number",
+              "description": "Minimum impurity decrease required to split.",
+              "minimum": 0
+            },
+            "random_state": {
+              "type": ["integer", "null"],
+              "default": 42
+            }
+          }
+        },
+        "ripper_classifier": {
+          "type": "object",
+          "description": "RIPPER rule learner (wittgenstein). Produces an ordered decision list of conjunctive rules. Any extra key is passed to lw.RIPPER. Pipeline defaults are tuned to suppress semantically overlapping rules: fewer discretization bins, capped conditions per rule, and a tighter MDL allowance than the library default.",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "n_discretize_bins": {
+              "type": ["integer", "null"],
+              "description": "Number of quantile bins for continuous features. Lower = wider/coarser bins = fewer near-duplicate range-based rules. Library default is 10.",
+              "default": 4,
+              "minimum": 2
+            },
+            "max_rule_conds": {
+              "type": ["integer", "null"],
+              "description": "Maximum conditions allowed per rule. Caps rule complexity; null = unlimited.",
+              "default": 3,
+              "minimum": 1
+            },
+            "max_total_conds": {
+              "type": ["integer", "null"],
+              "description": "Maximum total conditions across the entire ruleset. null = unlimited.",
+              "minimum": 1
+            },
+            "max_rules": {
+              "type": ["integer", "null"],
+              "description": "Hard cap on the number of rules produced. null = unlimited.",
+              "minimum": 1
+            },
+            "dl_allowance": {
+              "type": "integer",
+              "description": "Description-length allowance during pruning. Lower values yield smaller, less redundant rulesets. Library default is 64.",
+              "default": 8,
+              "minimum": 0
+            },
+            "k": {
+              "type": "integer",
+              "description": "Number of optimization passes over the ruleset (0 = IREP only).",
+              "default": 2,
+              "minimum": 0
+            },
+            "prune_size": {
+              "type": "number",
+              "description": "Fraction of training data held out for pruning.",
+              "default": 0.33,
+              "minimum": 0,
+              "maximum": 0.9
+            },
+            "random_state": {
+              "type": ["integer", "null"],
+              "default": 42
+            }
+          }
+        },
+        "rulefit_classifier": {
+          "type": "object",
+          "description": "RuleFit. Extracts rules from gradient boosting, then uses Lasso to weight them. Pipeline defaults are tuned to suppress near-duplicate rules: a smaller boosted ensemble narrows the rule pool, uniform tree shapes reduce pool diversity, an explicit alpha forces stronger Lasso sparsity than CV typically picks, and dropping the linear terms keeps output as pure rules. Any extra key is passed to RuleFitClassifier.",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "max_rules": {
+              "type": "integer",
+              "description": "Maximum number of rules with non-zero coefficient that Lasso will select.",
+              "default": 12,
+              "minimum": 1
+            },
+            "n_estimators": {
+              "type": "integer",
+              "description": "Number of trees in the gradient-boosting ensemble used to extract rules. Fewer trees = fewer near-duplicate thresholds in the rule pool.",
+              "default": 20,
+              "minimum": 1
+            },
+            "tree_size": {
+              "type": "integer",
+              "description": "Approximate number of leaves per tree (controls rule length).",
+              "minimum": 2
+            },
+            "exp_rand_tree_size": {
+              "type": "boolean",
+              "description": "If true, each tree's size is randomized (exponential distribution) for pool diversity. Set false to make every tree the same shape - reduces near-duplicate rules.",
+              "default": false
+            },
+            "include_linear": {
+              "type": "boolean",
+              "description": "Include raw linear feature terms alongside rules in the Lasso fit.",
+              "default": false
+            },
+            "alpha": {
+              "type": ["number", "null"],
+              "description": "Lasso regularization strength. null = chosen by cross-validation. Higher = sparser model.",
+              "default": 0.1,
+              "minimum": 0
+            },
+            "random_state": {
+              "type": ["integer", "null"],
+              "default": 42
+            }
+          }
+        },
+        "skope_rules_classifier": {
+          "type": "object",
+          "description": "Skope Rules. Generates rules from random tree ensembles, then filters by precision and recall thresholds. Any extra key is passed to SkopeRulesClassifier.",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "n_estimators": {
+              "type": "integer",
+              "description": "Number of base tree estimators. Fewer trees produce fewer (and less duplicated) rules.",
+              "default": 5,
+              "minimum": 1
+            },
+            "max_depth": {
+              "type": "integer",
+              "description": "Maximum depth of base trees (controls rule length).",
+              "default": 2,
+              "minimum": 1
+            },
+            "precision_min": {
+              "type": "number",
+              "description": "Minimum precision a rule must achieve to be kept. Higher values filter weaker rules.",
+              "default": 0.8,
+              "minimum": 0,
+              "maximum": 1
+            },
+            "recall_min": {
+              "type": "number",
+              "description": "Minimum recall a rule must achieve to be kept.",
+              "default": 0.05,
+              "minimum": 0,
+              "maximum": 1
+            },
+            "max_samples": {
+              "type": ["number", "integer"],
+              "description": "Number/fraction of samples drawn to train each base estimator."
+            },
+            "max_features": {
+              "description": "Number/fraction of features sampled per base estimator."
+            },
+            "max_depth_duplication": {
+              "type": ["integer", "null"],
+              "description": "Deduplicate rules whose first splits up to this depth match. Helps reduce overlap in the final ruleset."
+            },
+            "random_state": {
+              "type": ["integer", "null"],
+              "default": 42
+            }
+          }
+        },
+        "explainable_boosting_classifier": {
+          "type": "object",
+          "description": "Explainable Boosting Classifier (interpret). Any extra key is passed to ExplainableBoostingClassifier.",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "max_bins": {
+              "type": "integer",
+              "description": "Maximum number of bins per feature for the main effects.",
+              "minimum": 2
+            },
+            "max_interaction_bins": {
+              "type": "integer",
+              "description": "Maximum number of bins per feature for interaction effects.",
+              "minimum": 2
+            },
+            "interactions": {
+              "description": "Number of pairwise interactions to learn (int) or 0 to disable, or a list of explicit feature-index pairs."
+            },
+            "learning_rate": {
+              "type": "number",
+              "description": "Boosting learning rate.",
+              "minimum": 0,
+              "exclusiveMinimum": 0
+            },
+            "max_rounds": {
+              "type": "integer",
+              "description": "Maximum number of boosting rounds.",
+              "minimum": 1
+            },
+            "min_samples_leaf": {
+              "type": "integer",
+              "description": "Minimum samples per leaf in the inner trees.",
+              "minimum": 1
+            },
+            "max_leaves": {
+              "type": "integer",
+              "description": "Maximum leaves per inner tree.",
+              "minimum": 2
+            },
+            "random_state": {
+              "type": ["integer", "null"],
+              "default": 42
+            }
+          }
+        }
+      }
+    },
+    "evaluation_config": {
+      "type": "object",
+      "description": "Controls which metrics are computed and where output files are saved.",
+      "additionalProperties": false,
+      "properties": {
+        "metrics": {
+          "type": "array",
+          "description": "List of metrics to compute for each model.",
+          "items": {
+            "type": "string",
+            "enum": ["accuracy", "auroc"]
+          },
+          "default": ["accuracy", "auroc"]
+        },
+        "output_directory": {
+          "type": "string",
+          "description": "Directory where all output files are saved (CSVs, plots, rules, reports).",
+          "default": "outputs"
+        },
+        "understandability_config": {
+          "type": "object",
+          "description": "Calibration of the understandability score. The metric is exp(-((w1*(N+D) + w2*DD + w3*F) / s)^2). Top-level s/w1/w2/w3 apply to both groups as defaults; nested 'tree' or 'ruleset' blocks override per group. Trees and rule sets/lists score at different natural scales, so use different 's' for each.",
+          "additionalProperties": false,
+          "properties": {
+            "s": {
+              "type": "number",
+              "description": "Default scale parameter applied to both groups unless overridden in tree/ruleset.",
+              "exclusiveMinimum": 0
+            },
+            "w1": {
+              "type": "number",
+              "description": "Weight on (N + D): rule/tree size term.",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "w2": {
+              "type": "number",
+              "description": "Weight on DD: dependency distance.",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "w3": {
+              "type": "number",
+              "description": "Weight on F: number of distinct features used.",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "tree": {
+              "type": "object",
+              "description": "Overrides applied only to tree-based models (Decision Tree, FIGS).",
+              "additionalProperties": false,
+              "properties": {
+                "s": { "type": "number", "exclusiveMinimum": 0 },
+                "w1": { "type": "number", "minimum": 0, "maximum": 1 },
+                "w2": { "type": "number", "minimum": 0, "maximum": 1 },
+                "w3": { "type": "number", "minimum": 0, "maximum": 1 }
+              }
+            },
+            "ruleset": {
+              "type": "object",
+              "description": "Overrides applied only to rule sets and rule lists (RIPPER, RuleFit, SkopeRules).",
+              "additionalProperties": false,
+              "properties": {
+                "s": { "type": "number", "exclusiveMinimum": 0 },
+                "w1": { "type": "number", "minimum": 0, "maximum": 1 },
+                "w2": { "type": "number", "minimum": 0, "maximum": 1 },
+                "w3": { "type": "number", "minimum": 0, "maximum": 1 }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,10 +1,4 @@
-from sklearn.metrics import (
-    accuracy_score,
-    f1_score,
-    precision_score,
-    recall_score,
-    roc_auc_score,
-)
+from sklearn.metrics import accuracy_score, roc_auc_score
 
 from decision_pipeline.model_evaluate.understandability import (
     calculate_ruleset_understandability,
@@ -14,22 +8,13 @@ from decision_pipeline.model_evaluate.understandability import (
 
 def calculate_metrics(y_true, y_pred, y_pred_proba=None, metrics_list=None):
     if metrics_list is None:
-        metrics_list = ["accuracy", "precision", "recall", "f1", "auroc"]
+        metrics_list = ["accuracy", "auroc"]
 
     results = {}
     metrics_list = [m.lower() for m in metrics_list]
 
     if "accuracy" in metrics_list:
         results["accuracy"] = accuracy_score(y_true, y_pred)
-
-    if "precision" in metrics_list:
-        results["precision"] = precision_score(y_true, y_pred, average='binary', zero_division=0)
-
-    if "recall" in metrics_list:
-        results["recall"] = recall_score(y_true, y_pred, average='binary', zero_division=0)
-
-    if "f1" in metrics_list:
-        results["f1"] = f1_score(y_true, y_pred, average='binary', zero_division=0)
 
     if "auroc" in metrics_list:
         if y_pred_proba is not None:

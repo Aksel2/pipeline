@@ -60,7 +60,7 @@ def make_config(output_dir):
             "explainable_boosting_classifier": {"enabled": False}
         },
         "evaluation_config": {
-            "metrics": ["accuracy", "precision"],
+            "metrics": ["accuracy", "auroc"],
             "output_directory": str(output_dir)
         }
     }
@@ -149,5 +149,5 @@ class TestPipeline:
         with open(config_path, 'w') as f:
             json.dump(config, f)
 
-        with pytest.raises(ValueError, match="pre_decision_activity"):
+        with pytest.raises(ValueError, match=r".*pre_decision_activities.*"):
             pipeline(input_logs_path=data_path, config_path=config_path)

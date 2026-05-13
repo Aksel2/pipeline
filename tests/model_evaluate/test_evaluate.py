@@ -30,7 +30,7 @@ class TestCalculateMetrics:
         result = calculate_metrics(y_true, y_pred, metrics_list=["accuracy"])
 
         assert "accuracy" in result
-        assert "precision" not in result
+        assert "auroc" not in result
 
 
 class TestExactTreeMetrics:
@@ -57,7 +57,8 @@ class TestExactTreeMetrics:
     def test_understandability_score(self, mock_tree):
         metrics = extract_tree_metrics(mock_tree)
         result = compute_understandability_score(
-            metrics["N"], metrics["D"], metrics["DD"], metrics["F"]
+            metrics["N"], metrics["D"], metrics["DD"], metrics["F"],
+            s=28, w1=1, w2=1, w3=1,
         )
         c = 1 * (4 + 2.4) + 1 * 2 + 1 * 3
         expected = math.exp(-((c / 28) ** 2))
@@ -192,7 +193,7 @@ class TestRunEvaluation:
 
         config = {
             "evaluation_config": {
-                "metrics": ["accuracy", "precision"],
+                "metrics": ["accuracy", "auroc"],
                 "output_directory": str(tmp_path)
             }
         }

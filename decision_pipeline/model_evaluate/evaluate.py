@@ -37,7 +37,7 @@ def _resolve_understandability_kwargs(understandability_cfg):
 
 def run_evaluation(trained_models, config):
     evaluation_config = config.get("evaluation_config", {})
-    metrics = evaluation_config.get("metrics", ["accuracy", "precision", "auroc"])
+    metrics = evaluation_config.get("metrics", ["accuracy", "auroc"])
     output_dir = evaluation_config.get("output_directory", "outputs")
 
     understandability_cfg = evaluation_config.get("understandability_config", {})

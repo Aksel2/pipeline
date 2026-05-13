@@ -81,7 +81,7 @@ class TestCollapseObservations:
             case_attributes=["loan_type"],
             aggregation=["loan_type"]
         )
-        with pytest.raises(ValueError, match="case attribute"):
+        with pytest.raises(ValueError, match=r".*case attribute.*"):
             collapse_observations(df, config)
 
     def test_aggregation_rejects_discrete_attribute(self):
@@ -93,7 +93,7 @@ class TestCollapseObservations:
             event_discrete=["status"],
             aggregation=["status"]
         )
-        with pytest.raises(ValueError, match="discrete event attribute"):
+        with pytest.raises(ValueError, match=r".*discrete event attribute.*"):
             collapse_observations(df, config)
 
     def test_aggregation_rejects_unknown_column(self):
@@ -102,7 +102,7 @@ class TestCollapseObservations:
             'observation': [1], 'target': [0]
         })
         config = make_config(aggregation=["amount"])
-        with pytest.raises(ValueError, match="not in event_attributes_continuous"):
+        with pytest.raises(ValueError, match=r".*not in event_attributes_continuous.*"):
             collapse_observations(df, config)
 
     def test_mixed_aggregation_and_last_state(self):
@@ -172,7 +172,7 @@ class TestDataFrameEncoderOneHot:
         config = make_config(case_attributes=["type"], one_hot=["type"])
         encoder = DataFrameEncoder(config)
         encoder.fit(df_train)
-        with pytest.raises(ValueError, match="Columns missing"):
+        with pytest.raises(ValueError, match=r".*Columns missing.*"):
             encoder.transform(df_test)
 
 
