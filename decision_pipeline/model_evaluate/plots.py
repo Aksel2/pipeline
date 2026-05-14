@@ -6,7 +6,7 @@ from sklearn.metrics import roc_curve
 from sklearn.tree import plot_tree
 
 
-def _simplify_tree_node_text(ax):
+def simplify_tree_node_text(ax):
     for child in ax.get_children():
         if not isinstance(child, Annotation):
             continue
@@ -46,7 +46,7 @@ def plot_roc_curves(all_results, output_dir):
     plt.close()
 
 
-def _layout_figs_tree(node, depth, x_counter):
+def layout_figs_tree(node, depth, x_counter):
     if node is None:
         return None
     is_leaf = node.left is None and node.right is None
@@ -54,8 +54,8 @@ def _layout_figs_tree(node, depth, x_counter):
         x = x_counter[0]
         x_counter[0] += 1
         return {'node': node, 'x': x, 'y': -depth, 'is_leaf': True, 'children': []}
-    left = _layout_figs_tree(node.left, depth + 1, x_counter)
-    right = _layout_figs_tree(node.right, depth + 1, x_counter)
+    left = layout_figs_tree(node.left, depth + 1, x_counter)
+    right = layout_figs_tree(node.right, depth + 1, x_counter)
     x = (left['x'] + right['x']) / 2.0
     return {'node': node, 'x': x, 'y': -depth, 'is_leaf': False, 'children': [left, right]}
 
@@ -74,8 +74,8 @@ def _figs_tree_leaves(node):
     return _figs_tree_leaves(node.left) + _figs_tree_leaves(node.right)
 
 
-def _draw_figs_layout(layout, ax, feature_names):
-    def _format_value(val):
+def draw_figs_layout(layout, ax, feature_names):
+    def format_value(val):
         try:
             arr = list(val)
             if len(arr) == 1:
@@ -88,7 +88,7 @@ def _draw_figs_layout(layout, ax, feature_names):
         node = layout_node['node']
         x, y = layout_node['x'], layout_node['y']
         if layout_node['is_leaf']:
-            label = _format_value(node.value)
+            label = format_value(node.value)
             ax.annotate(
                 label, (x, y), ha='center', va='center', fontsize=8,
                 bbox=dict(boxstyle='round,pad=0.4', fc='lightblue', ec='navy', lw=0.8),
@@ -122,9 +122,9 @@ def plot_figs_trees(model, feature_names, output_path):
     axes = axes[0]
 
     for ax, tree, idx in zip(axes, trees, range(n_trees)):
-        layout = _layout_figs_tree(tree, 0, [0])
+        layout = layout_figs_tree(tree, 0, [0])
         if layout is not None:
-            _draw_figs_layout(layout, ax, feature_names)
+            draw_figs_layout(layout, ax, feature_names)
             ax.set_title(f'Tree #{idx}')
         ax.set_axis_off()
         ax.margins(0.15, 0.25)
@@ -156,7 +156,7 @@ def plot_tree_visualizations(trained_models, output_dir, class_names=None):
                 impurity=False,
                 label='none',
             )
-            _simplify_tree_node_text(ax)
+            simplify_tree_node_text(ax)
             ax.set_title('Decision Tree')
             output_path = os.path.join(output_dir, f'{model_name}_tree.png')
             plt.savefig(output_path, dpi=300, bbox_inches='tight')

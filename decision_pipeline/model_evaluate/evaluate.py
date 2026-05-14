@@ -16,7 +16,7 @@ def format_understandability(x):
     return f"{x:.3g}" if pd.notna(x) else ""
 
 
-def _resolve_class_names(config):
+def resolve_class_names(config):
     pre = config.get("preprocess_config", {})
     cls0 = pre.get("post_decision_0_activities") or []
     cls1 = pre.get("post_decision_1_activities") or []
@@ -25,7 +25,7 @@ def _resolve_class_names(config):
     return None
 
 
-def _resolve_understandability_kwargs(understandability_cfg):
+def resolve_understandability_kwargs(understandability_cfg):
     allowed = {"s", "w1", "w2", "w3"}
     shared = {k: v for k, v in understandability_cfg.items() if k in allowed}
     tree_override = {k: v for k, v in understandability_cfg.get("tree", {}).items() if k in allowed}
@@ -41,7 +41,7 @@ def run_evaluation(trained_models, config):
     output_dir = evaluation_config.get("output_directory", "outputs")
 
     understandability_cfg = evaluation_config.get("understandability_config", {})
-    tree_kwargs, ruleset_kwargs = _resolve_understandability_kwargs(understandability_cfg)
+    tree_kwargs, ruleset_kwargs = resolve_understandability_kwargs(understandability_cfg)
 
     all_results = evaluate_all_models(trained_models, metrics, tree_kwargs, ruleset_kwargs)
 
@@ -50,7 +50,7 @@ def run_evaluation(trained_models, config):
 
     plot_roc_curves(all_results, output_dir)
     save_all_rules(trained_models, output_dir)
-    plot_tree_visualizations(trained_models, output_dir, _resolve_class_names(config))
+    plot_tree_visualizations(trained_models, output_dir, resolve_class_names(config))
 
     formatters = {}
     if 'understandability' in comparison_df.columns:
